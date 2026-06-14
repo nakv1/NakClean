@@ -1,0 +1,1431 @@
+<Window x:Class="NakClean.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ctrl="clr-namespace:NakClean.Controls"
+        xmlns:vm="clr-namespace:NakClean.ViewModels"
+        xmlns:loc="clr-namespace:NakClean.Services"
+        xmlns:sys="clr-namespace:System;assembly=mscorlib"
+        Title="NakClean" Height="720" Width="1080"
+        Icon="icon.ico"
+        MinHeight="600" MinWidth="940"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource WindowSurface}"
+        Foreground="{DynamicResource TextBrush}"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        TextOptions.TextFormattingMode="Display"
+        TextOptions.TextRenderingMode="ClearType"
+        RenderOptions.ClearTypeHint="Enabled">
+
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="46" ResizeBorderThickness="6" CornerRadius="0" GlassFrameThickness="0"/>
+    </WindowChrome.WindowChrome>
+
+    <Window.DataContext>
+        <vm:MainViewModel/>
+    </Window.DataContext>
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolVis"/>
+        <loc:PercentWidthConverter x:Key="PctWidth"/>
+
+        <!-- Карточка пункта проверки ПК (полоса уровня + мягкая иконка + текст) -->
+        <DataTemplate x:Key="HealthCardTemplate">
+            <Border Style="{StaticResource Card}" Margin="6,6" Padding="0">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- акцентная полоса по уровню -->
+                    <Border Grid.Column="0" Width="3" CornerRadius="2" Background="{Binding LevelBrush}"
+                            Margin="11,13,0,13" VerticalAlignment="Stretch"/>
+
+                    <Grid Grid.Column="1" Margin="15,14,18,14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- мягкая иконка статуса -->
+                        <Border Grid.Column="0" Width="36" Height="36" CornerRadius="11"
+                                Background="{Binding LevelSoftBrush}" BorderBrush="{Binding LevelBorderBrush}"
+                                BorderThickness="1" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Glyph}" Foreground="{Binding LevelBrush}" FontWeight="Bold"
+                                       FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+
+                        <StackPanel Grid.Column="1" Margin="15,0,0,0" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Title}" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding Value}" FontSize="13"
+                                       Foreground="{DynamicResource MutedBrush}" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding Hint}" FontSize="12" Foreground="{DynamicResource AccentTextBrush}"
+                                       Margin="0,5,0,0" TextWrapping="Wrap"
+                                       Visibility="{Binding HasHint, Converter={StaticResource BoolVis}}"/>
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+            </Border>
+        </DataTemplate>
+
+        <!-- Секция-категория: заголовок (иконка + название) + карточки -->
+        <DataTemplate x:Key="HealthSectionTemplate">
+            <StackPanel Margin="0,0,0,6">
+                <StackPanel Orientation="Horizontal" Margin="8,14,0,2">
+                    <TextBlock Text="{Binding Glyph}" FontSize="14" Margin="0,0,8,0"/>
+                    <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="Bold"
+                               Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center"/>
+                </StackPanel>
+                <ItemsControl ItemsSource="{Binding Items}" ItemTemplate="{StaticResource HealthCardTemplate}"/>
+            </StackPanel>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="46"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- ===== Заголовок ===== -->
+        <Grid Grid.Row="0">
+            <Border Height="1" VerticalAlignment="Bottom" Background="{DynamicResource CardBorderBrush}"/>
+            <StackPanel Orientation="Horizontal" Margin="18,0" VerticalAlignment="Center">
+                <Border Width="24" Height="24" CornerRadius="7" Background="{StaticResource AccentGradient}" VerticalAlignment="Center">
+                    <TextBlock Text="N" Foreground="#FF1A1407" FontSize="15" FontWeight="Bold"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <TextBlock Text="NakClean" FontSize="15" FontWeight="Bold" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                <Border Width="1" Height="16" Background="{DynamicResource CardBorderBrush}" Margin="12,0"/>
+                <TextBlock Text="{Binding [header_subtitle], Source={x:Static loc:Loc.I}}" FontSize="12"
+                           Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center"/>
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" WindowChrome.IsHitTestVisibleInChrome="True">
+                <Button x:Name="MinBtn" Content="-" Width="46" Height="46" Click="MinBtn_Click" Style="{StaticResource WinBtn}"/>
+                <Button x:Name="MaxBtn" Content="▢" Width="46" Height="46" Click="MaxBtn_Click" Style="{StaticResource WinBtn}"/>
+                <Button x:Name="CloseBtn" Content="✕" Width="46" Height="46" Click="CloseBtn_Click" Style="{StaticResource WinCloseBtn}"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- ===== Тело ===== -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="210"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Сайдбар -->
+            <Border Grid.Column="0" Background="{DynamicResource SidebarSurface}"
+                    BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="0,0,1,0"/>
+            <Grid Grid.Column="0" Margin="0,10,0,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <StackPanel Grid.Row="0">
+                <RadioButton x:Name="NavDash" Style="{StaticResource NavButton}" IsChecked="True" GroupName="nav">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="📊" FontSize="16"/>
+                        <TextBlock Text="{Binding [nav_overview], Source={x:Static loc:Loc.I}}" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </RadioButton>
+                <RadioButton x:Name="NavCheck" Style="{StaticResource NavButton}" GroupName="nav">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="❤" FontSize="16"/>
+                        <TextBlock Text="{Binding [nav_check], Source={x:Static loc:Loc.I}}" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </RadioButton>
+                <RadioButton x:Name="NavClean" Style="{StaticResource NavButton}" GroupName="nav">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="🧹" FontSize="16"/>
+                        <TextBlock Text="{Binding [nav_clean], Source={x:Static loc:Loc.I}}" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </RadioButton>
+                <RadioButton x:Name="NavOptimize" Style="{StaticResource NavButton}" GroupName="nav">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="⚡" FontSize="16"/>
+                        <TextBlock Text="{Binding [nav_optimize], Source={x:Static loc:Loc.I}}" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </RadioButton>
+                <RadioButton x:Name="NavMaint" Style="{StaticResource NavButton}" GroupName="nav">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="🛠" FontSize="16"/>
+                        <TextBlock Text="{Binding [nav_maint], Source={x:Static loc:Loc.I}}" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </RadioButton>
+                <RadioButton x:Name="NavRegistry" Style="{StaticResource NavButton}" GroupName="nav">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="🗄" FontSize="16"/>
+                        <TextBlock Text="{Binding [nav_registry], Source={x:Static loc:Loc.I}}" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </RadioButton>
+                <RadioButton x:Name="NavStartup" Style="{StaticResource NavButton}" GroupName="nav">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="🚀" FontSize="16"/>
+                        <TextBlock Text="{Binding [nav_startup], Source={x:Static loc:Loc.I}}" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </RadioButton>
+                <RadioButton x:Name="NavApps" Style="{StaticResource NavButton}" GroupName="nav">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="🗑" FontSize="16"/>
+                        <TextBlock Text="{Binding [nav_apps], Source={x:Static loc:Loc.I}}" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </RadioButton>
+                <RadioButton x:Name="NavFiles" Style="{StaticResource NavButton}" GroupName="nav">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="🔎" FontSize="16"/>
+                        <TextBlock Text="{Binding [nav_files], Source={x:Static loc:Loc.I}}" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </RadioButton>
+                <RadioButton x:Name="NavDiag" Style="{StaticResource NavButton}" GroupName="nav">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="🔬" FontSize="16"/>
+                        <TextBlock Text="{Binding [nav_diag], Source={x:Static loc:Loc.I}}" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </RadioButton>
+                <!-- невидимый пункт «О программе» — открывается иконкой ℹ снизу -->
+                <RadioButton x:Name="NavAbout" GroupName="nav" Visibility="Collapsed"/>
+                </StackPanel>
+
+                <!-- Нижние кнопки: тема и язык -->
+                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="16,0,16,16">
+                    <Button x:Name="ThemeBtn" Style="{StaticResource SideToolBtn}" Click="ThemeBtn_Click"
+                            ToolTip="{Binding [theme_tip], Source={x:Static loc:Loc.I}}">
+                        <TextBlock x:Name="ThemeIcon" Text="🌙" FontSize="15"/>
+                    </Button>
+                    <Button x:Name="LangBtn" Style="{StaticResource SideToolBtn}" Click="LangBtn_Click" Margin="8,0,0,0"
+                            ToolTip="{Binding [lang_tip], Source={x:Static loc:Loc.I}}">
+                        <TextBlock x:Name="LangText" Text="EN" FontWeight="Bold"/>
+                    </Button>
+                    <Button Style="{StaticResource SideToolBtn}" Click="AboutBtn_Click" Margin="8,0,0,0"
+                            ToolTip="{Binding [nav_about], Source={x:Static loc:Loc.I}}">
+                        <TextBlock Text="ℹ" FontSize="15"/>
+                    </Button>
+                </StackPanel>
+            </Grid>
+
+            <!-- Контент -->
+            <Grid Grid.Column="1" Margin="6,0,16,16">
+
+                <!-- ===== Страница: Обзор ===== -->
+                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                              Visibility="{Binding IsChecked, ElementName=NavDash, Converter={StaticResource BoolVis}}">
+                    <StackPanel>
+                        <TextBlock Text="{Binding [hdr_overview], Source={x:Static loc:Loc.I}}" FontSize="20" FontWeight="Bold" Margin="6,2,0,2"/>
+                        <TextBlock Text="{Binding OverviewSummary}" FontSize="12" Foreground="{DynamicResource MutedBrush}"
+                                   Margin="6,0,0,4" TextWrapping="Wrap"/>
+
+                        <!-- Единая адаптивная сетка: CPU · RAM · видеокарты · диски -->
+                        <ItemsControl ItemsSource="{Binding Tiles}" Margin="0,4,0,0">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Style="{StaticResource Card}" Margin="6" Padding="16" Width="200">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource MutedBrush}" TextTrimming="CharacterEllipsis"/>
+                                            <Viewbox Width="98" Height="98" Margin="0,10,0,0" HorizontalAlignment="Center">
+                                                <ctrl:CircularGauge Percent="{Binding Percent}" Caption="{Binding Caption}"
+                                                                    Accent="{Binding Accent}"/>
+                                            </Viewbox>
+                                            <TextBlock Text="{Binding Line1}" FontSize="13" FontWeight="SemiBold"
+                                                       HorizontalAlignment="Center" TextAlignment="Center" Margin="0,10,0,0"
+                                                       TextWrapping="Wrap"/>
+                                            <TextBlock Text="{Binding Line2}" FontSize="11" Foreground="{DynamicResource MutedBrush}"
+                                                       HorizontalAlignment="Center" TextAlignment="Center" Margin="0,4,0,0"
+                                                       TextWrapping="Wrap"/>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- ===== Страница: Проверка ПК ===== -->
+                <Grid Visibility="{Binding IsChecked, ElementName=NavCheck, Converter={StaticResource BoolVis}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- ШАПКА-БАННЕР: гейдж + вердикт + счётчики + кнопка -->
+                    <Border Grid.Row="0" Style="{StaticResource Card}" Margin="6,4,6,4" Padding="26,18">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <ctrl:CircularGauge Grid.Column="0" Percent="{Binding Score}" ValueText="{Binding ScoreText}"
+                                                Caption="{Binding [cap_of100], Source={x:Static loc:Loc.I}}" Accent="{Binding ScoreBrush}"
+                                                VerticalAlignment="Center"/>
+
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="24,0,16,0">
+                                <TextBlock Text="{Binding [pc_state], Source={x:Static loc:Loc.I}}" FontSize="20" FontWeight="Bold"/>
+                                <TextBlock Text="{Binding ScoreVerdict}" FontSize="15" FontWeight="SemiBold"
+                                           Foreground="{Binding ScoreBrush}" Margin="0,3,0,0"/>
+                                <TextBlock Text="{Binding HealthCheckNote}" Foreground="{DynamicResource MutedBrush}"
+                                           Margin="0,6,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+
+                            <!-- Счётчики -->
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,28,0">
+                                <StackPanel MinWidth="62">
+                                    <TextBlock Text="{Binding HealthBad}" FontSize="26" FontWeight="Bold"
+                                               HorizontalAlignment="Center" Foreground="#FFE5484D"/>
+                                    <TextBlock Text="{Binding [pc_problems], Source={x:Static loc:Loc.I}}" FontSize="11"
+                                               HorizontalAlignment="Center" Foreground="{DynamicResource MutedBrush}" Margin="0,2,0,0"/>
+                                </StackPanel>
+                                <StackPanel MinWidth="62">
+                                    <TextBlock Text="{Binding HealthWarn}" FontSize="26" FontWeight="Bold"
+                                               HorizontalAlignment="Center" Foreground="#FFDDB44B"/>
+                                    <TextBlock Text="{Binding [pc_warnings], Source={x:Static loc:Loc.I}}" FontSize="11"
+                                               HorizontalAlignment="Center" Foreground="{DynamicResource MutedBrush}" Margin="0,2,0,0"/>
+                                </StackPanel>
+                                <StackPanel MinWidth="62">
+                                    <TextBlock Text="{Binding HealthOk}" FontSize="26" FontWeight="Bold"
+                                               HorizontalAlignment="Center" Foreground="#FF3DD68C"/>
+                                    <TextBlock Text="{Binding [pc_ok], Source={x:Static loc:Loc.I}}" FontSize="11"
+                                               HorizontalAlignment="Center" Foreground="{DynamicResource MutedBrush}" Margin="0,2,0,0"/>
+                                </StackPanel>
+                            </StackPanel>
+
+                            <Button Grid.Column="3" Content="{Binding [pc_recheck], Source={x:Static loc:Loc.I}}"
+                                    Style="{StaticResource AccentButton}" VerticalAlignment="Center"
+                                    Command="{Binding RunHealthCheckCommand}"/>
+                        </Grid>
+                    </Border>
+
+                    <!-- ПРОВЕРКИ: секции по категориям, разложенные по двум колонкам -->
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                        <Grid Margin="6,2,6,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <ItemsControl Grid.Column="0" ItemsSource="{Binding HealthColLeft}"
+                                          ItemTemplate="{StaticResource HealthSectionTemplate}" VerticalAlignment="Top"/>
+                            <ItemsControl Grid.Column="1" ItemsSource="{Binding HealthColRight}"
+                                          ItemTemplate="{StaticResource HealthSectionTemplate}" VerticalAlignment="Top"/>
+                        </Grid>
+                    </ScrollViewer>
+                </Grid>
+
+                <!-- ===== Страница: Очистка ===== -->
+                <Grid Visibility="{Binding IsChecked, ElementName=NavClean, Converter={StaticResource BoolVis}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Шапка -->
+                    <Grid Grid.Row="0" Margin="6,4,6,8">
+                        <StackPanel>
+                            <TextBlock Text="{Binding [hdr_clean], Source={x:Static loc:Loc.I}}" FontSize="22" FontWeight="Bold"/>
+                            <TextBlock Text="{Binding Status}" Foreground="{DynamicResource MutedBrush}" Margin="0,4,0,0"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
+                            <Button Content="{Binding [btn_select_all], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Margin="0,0,8,0"
+                                    Command="{Binding SelectAllCommand}"/>
+                            <Button Content="{Binding [btn_select_none], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}"
+                                    Command="{Binding SelectNoneCommand}"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- Список категорий -->
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding CategoriesView}" Margin="6,0">
+                            <ItemsControl.GroupStyle>
+                                <GroupStyle>
+                                    <GroupStyle.HeaderTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="Bold"
+                                                       Foreground="{DynamicResource MutedBrush}" Margin="2,14,0,6"/>
+                                        </DataTemplate>
+                                    </GroupStyle.HeaderTemplate>
+                                </GroupStyle>
+                            </ItemsControl.GroupStyle>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Style="{StaticResource Card}" Margin="0,4" Padding="14">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <CheckBox Grid.Column="0" IsChecked="{Binding Selected}" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding Glyph}" FontSize="22"
+                                                       Margin="14,0" VerticalAlignment="Center"/>
+                                            <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="{Binding NameText}" FontSize="14" FontWeight="SemiBold"/>
+                                                    <Border Background="#33F59E0B" CornerRadius="4" Padding="6,1" Margin="8,0,0,0"
+                                                            VerticalAlignment="Center"
+                                                            Visibility="{Binding NeedsAdmin, Converter={StaticResource BoolVis}}">
+                                                        <TextBlock Text="{Binding [clean_admin], Source={x:Static loc:Loc.I}}" FontSize="10" Foreground="#FFF59E0B"/>
+                                                    </Border>
+                                                </StackPanel>
+                                                <TextBlock Text="{Binding DescriptionText}" FontSize="12"
+                                                           Foreground="{DynamicResource MutedBrush}" Margin="0,2,0,0"/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="3" VerticalAlignment="Center" HorizontalAlignment="Right">
+                                                <TextBlock Text="{Binding SizeText}" FontSize="16" FontWeight="Bold"
+                                                           HorizontalAlignment="Right"/>
+                                                <TextBlock Text="{Binding DetailText}" FontSize="11"
+                                                           Foreground="{DynamicResource MutedBrush}" HorizontalAlignment="Right"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+
+                    <!-- Нижняя панель действий -->
+                    <Border Grid.Row="2" Style="{StaticResource Card}" Margin="6,10,6,0" Padding="16,12">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding [clean_selected], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
+                                <TextBlock Text="{Binding SelectedText}" FontSize="20" FontWeight="Bold"/>
+                            </StackPanel>
+                            <TextBlock Grid.Column="1" Text="{Binding SessionFreedLine}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource AccentTextBrush}"
+                                       TextTrimming="CharacterEllipsis" Margin="12,0"
+                                       Visibility="{Binding HasSessionFreed, Converter={StaticResource BoolVis}}"/>
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                <Button Content="{Binding [btn_scan], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}"
+                                        Command="{Binding ScanCommand}" Margin="0,0,10,0" Padding="22,12"/>
+                                <Button Content="{Binding [btn_clean], Source={x:Static loc:Loc.I}}" Style="{StaticResource DangerButton}"
+                                        Command="{Binding CleanCommand}" Padding="26,12"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <!-- ===== Страница: Оптимизация ===== -->
+                <Grid Visibility="{Binding IsChecked, ElementName=NavOptimize, Converter={StaticResource BoolVis}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="6,4,6,8">
+                        <StackPanel>
+                            <TextBlock Text="{Binding [hdr_optimize], Source={x:Static loc:Loc.I}}" FontSize="22" FontWeight="Bold"/>
+                            <TextBlock Text="{Binding OptNote}" Foreground="{DynamicResource MutedBrush}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                            <CheckBox Content="{Binding [opt_restore], Source={x:Static loc:Loc.I}}" IsChecked="{Binding CreateRestore}"
+                                      Margin="0,10,0,0" FontSize="13"/>
+                            <!-- профили: отмечают набор твиков одним кликом -->
+                            <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                                <TextBlock Text="{Binding [opt_profiles], Source={x:Static loc:Loc.I}}" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource MutedBrush}" FontSize="13" Margin="0,0,10,0"/>
+                                <Button Content="{Binding [prof_balanced], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Padding="13,7"
+                                        Command="{Binding ApplyProfileCommand}" CommandParameter="balanced" Margin="0,0,8,0"/>
+                                <Button Content="{Binding [prof_gaming], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Padding="13,7"
+                                        Command="{Binding ApplyProfileCommand}" CommandParameter="gaming" Margin="0,0,8,0"/>
+                                <Button Content="{Binding [prof_quiet], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Padding="13,7"
+                                        Command="{Binding ApplyProfileCommand}" CommandParameter="quiet" Margin="0,0,8,0"/>
+                                <Button Content="{Binding [prof_clear], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Padding="13,7"
+                                        Command="{Binding ApplyProfileCommand}" CommandParameter="none"/>
+                            </StackPanel>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
+                            <Button Content="{Binding [opt_revert], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Margin="0,0,8,0" Command="{Binding RevertOptCommand}"/>
+                            <Button Content="↻" Style="{StaticResource GhostButton}" Margin="0,0,8,0" Command="{Binding RefreshOptCommand}"/>
+                            <Button Content="{Binding [opt_apply], Source={x:Static loc:Loc.I}}" Style="{StaticResource AccentButton}" Padding="18,9" Command="{Binding ApplyOptCommand}"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding TweaksView}" Margin="6,0">
+                            <ItemsControl.GroupStyle>
+                                <GroupStyle>
+                                    <GroupStyle.HeaderTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="Bold"
+                                                       Foreground="{DynamicResource AccentTextBrush}" Margin="2,14,0,4"/>
+                                        </DataTemplate>
+                                    </GroupStyle.HeaderTemplate>
+                                </GroupStyle>
+                            </ItemsControl.GroupStyle>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Style="{StaticResource Card}" Margin="0,3" Padding="14,11">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <CheckBox Grid.Column="0" IsChecked="{Binding Selected}" VerticalAlignment="Center"/>
+                                            <StackPanel Grid.Column="1" Margin="12,0,0,0">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                                    <!-- честная метка реального эффекта -->
+                                                    <Border Background="{Binding EffectBrush}" CornerRadius="7" Padding="7,1" Margin="10,0,0,0" VerticalAlignment="Center"
+                                                            ToolTip="{Binding EffectTip}">
+                                                        <TextBlock Text="{Binding EffectText}" FontSize="10" FontWeight="Bold" Foreground="#FF14140F"/>
+                                                    </Border>
+                                                </StackPanel>
+                                                <TextBlock Text="{Binding Description}" FontSize="12" Foreground="{DynamicResource MutedBrush}"
+                                                           Margin="0,3,0,0" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="2" Text="{Binding StatusText}" Foreground="{Binding StatusBrush}"
+                                                       FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+
+                    <!-- журнал изменений + откат всего (виден если есть применённые твики) -->
+                    <Border Grid.Row="2" Style="{StaticResource Card}" Margin="6,10,6,0" Padding="14,12"
+                            Visibility="{Binding HasChanges, Converter={StaticResource BoolVis}}">
+                        <StackPanel>
+                            <Grid>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="📝" FontSize="15" Margin="0,0,8,0"/>
+                                    <TextBlock Text="{Binding ChangesNote}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                </StackPanel>
+                                <Button Content="{Binding [chg_revert_all], Source={x:Static loc:Loc.I}}" Style="{StaticResource DangerButton}"
+                                        HorizontalAlignment="Right" Padding="16,8" Command="{Binding RevertAllCommand}"/>
+                            </Grid>
+                            <ItemsControl ItemsSource="{Binding ChangeLog}" Margin="0,8,0,0" MaxHeight="120">
+                                <ItemsControl.Template>
+                                    <ControlTemplate TargetType="ItemsControl">
+                                        <ScrollViewer VerticalScrollBarVisibility="Auto"><ItemsPresenter/></ScrollViewer>
+                                    </ControlTemplate>
+                                </ItemsControl.Template>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,2">
+                                            <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding When}" HorizontalAlignment="Right" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <!-- ===== Страница: Обслуживание ===== -->
+                <Grid Visibility="{Binding IsChecked, ElementName=NavMaint, Converter={StaticResource BoolVis}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Margin="6,4,6,8">
+                        <TextBlock Text="{Binding [hdr_maint], Source={x:Static loc:Loc.I}}" FontSize="22" FontWeight="Bold"/>
+                        <TextBlock Text="{Binding [mnt_note], Source={x:Static loc:Loc.I}}" Foreground="{DynamicResource MutedBrush}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                    </StackPanel>
+
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding MaintenanceTasks}" Margin="6,0">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Style="{StaticResource Card}" Margin="0,4" Padding="16,13">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="{Binding Glyph}" FontSize="22" VerticalAlignment="Center" Margin="0,0,14,0"/>
+                                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding Title}" FontSize="14" FontWeight="SemiBold"/>
+                                                <TextBlock Text="{Binding Desc}" FontSize="12" Foreground="{DynamicResource MutedBrush}"
+                                                           Margin="0,2,0,0" TextWrapping="Wrap"/>
+                                                <!-- комментарий что происходит / результат -->
+                                                <TextBlock Text="{Binding Status}" FontSize="12" Foreground="{DynamicResource AccentTextBrush}"
+                                                           Margin="0,6,0,0" TextWrapping="Wrap"
+                                                           Visibility="{Binding HasStatus, Converter={StaticResource BoolVis}}"/>
+                                                <!-- прогресс-бар (определённый % если Windows отдаёт, иначе анимация) + время -->
+                                                <StackPanel Margin="0,6,0,0" Visibility="{Binding IsWorking, Converter={StaticResource BoolVis}}">
+                                                    <ProgressBar Height="6" Minimum="0" Maximum="100" Value="{Binding Progress, Mode=OneWay}"
+                                                                 IsIndeterminate="{Binding IsIndeterminate, Mode=OneWay}"
+                                                                 Background="{DynamicResource TrackBrush}" BorderThickness="0"
+                                                                 Foreground="{DynamicResource AccentTextBrush}"/>
+                                                    <TextBlock Text="{Binding ProgressText}" FontSize="11" Foreground="{DynamicResource MutedBrush}"
+                                                               HorizontalAlignment="Right" Margin="0,3,0,0"/>
+                                                </StackPanel>
+                                            </StackPanel>
+                                            <!-- состояние 1: основная кнопка (Проверить/Запустить) -->
+                                            <Button Grid.Column="2" Content="{Binding PrimaryText}"
+                                                    Style="{StaticResource AccentButton}" Padding="16,8" VerticalAlignment="Center" Margin="12,0,0,0"
+                                                    Command="{Binding PrimaryCommand}"
+                                                    Visibility="{Binding ShowPrimary, Converter={StaticResource BoolVis}}"/>
+                                            <!-- состояние 2: после проверки - Запустить + Отмена -->
+                                            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0"
+                                                        Visibility="{Binding ShowConfirm, Converter={StaticResource BoolVis}}">
+                                                <Button Content="{Binding [mnt_run], Source={x:Static loc:Loc.I}}" Style="{StaticResource AccentButton}"
+                                                        Padding="16,8" Command="{Binding ConfirmCommand}"/>
+                                                <Button Content="{Binding [mnt_cancel], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}"
+                                                        Padding="14,8" Margin="8,0,0,0" Command="{Binding CancelCommand}"/>
+                                            </StackPanel>
+                                            <!-- состояние 3: во время работы - Отмена -->
+                                            <Button Grid.Column="2" Content="{Binding [mnt_cancel], Source={x:Static loc:Loc.I}}"
+                                                    Style="{StaticResource GhostButton}" Padding="14,8" VerticalAlignment="Center" Margin="12,0,0,0"
+                                                    Command="{Binding CancelCommand}"
+                                                    Visibility="{Binding IsWorking, Converter={StaticResource BoolVis}}"/>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
+
+                <!-- ===== Страница: Реестр ===== -->
+                <Grid Visibility="{Binding IsChecked, ElementName=NavRegistry, Converter={StaticResource BoolVis}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="6,4,6,8">
+                        <StackPanel>
+                            <TextBlock Text="{Binding [hdr_registry], Source={x:Static loc:Loc.I}}" FontSize="22" FontWeight="Bold"/>
+                            <TextBlock Text="{Binding RegNote}" Foreground="{DynamicResource MutedBrush}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
+                            <Button Content="{Binding [reg_scan], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Margin="0,0,8,0"
+                                    Command="{Binding ScanRegistryCommand}"/>
+                            <Button Content="{Binding [reg_fix], Source={x:Static loc:Loc.I}}" Style="{StaticResource AccentButton}"
+                                    Padding="18,9" Command="{Binding FixRegistryCommand}"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- Категории поиска -->
+                    <Border Grid.Row="1" Style="{StaticResource Card}" Margin="6,0,6,6" Padding="14">
+                        <ItemsControl ItemsSource="{Binding RegOptions}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><UniformGrid Columns="3"/></ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <CheckBox Content="{Binding NameText}" IsChecked="{Binding Selected}" Margin="4,5"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Border>
+
+                    <!-- Результаты -->
+                    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding RegIssuesView}" Margin="6,0">
+                            <ItemsControl.GroupStyle>
+                                <GroupStyle>
+                                    <GroupStyle.HeaderTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="Bold"
+                                                       Foreground="{DynamicResource MutedBrush}" Margin="2,12,0,4"/>
+                                        </DataTemplate>
+                                    </GroupStyle.HeaderTemplate>
+                                </GroupStyle>
+                            </ItemsControl.GroupStyle>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Style="{StaticResource Card}" Margin="0,3" Padding="12,9">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <CheckBox Grid.Column="0" IsChecked="{Binding Selected}" VerticalAlignment="Center"/>
+                                            <StackPanel Grid.Column="1" Margin="12,0,0,0">
+                                                <TextBlock Text="{Binding Problem}" FontSize="13" FontWeight="SemiBold"/>
+                                                <TextBlock Text="{Binding Target}" FontSize="12" Foreground="{DynamicResource MutedBrush}"
+                                                           Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Text="{Binding FullPath}" FontSize="11" Foreground="#FF6E7787"
+                                                           Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
+
+                <!-- ===== Страница: Запуск ===== -->
+                <Grid Visibility="{Binding IsChecked, ElementName=NavStartup, Converter={StaticResource BoolVis}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Text="{Binding [hdr_startup], Source={x:Static loc:Loc.I}}" FontSize="22" FontWeight="Bold" Margin="6,4,0,6"/>
+
+                    <!-- Под-вкладки -->
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="6,0,0,8">
+                        <RadioButton x:Name="StTabApps" Content="{Binding [st_apps], Source={x:Static loc:Loc.I}}" Style="{StaticResource NavButton}" GroupName="stsub" IsChecked="True"/>
+                        <RadioButton x:Name="StTabTasks" Content="{Binding [st_tasks], Source={x:Static loc:Loc.I}}" Style="{StaticResource NavButton}" GroupName="stsub"/>
+                        <RadioButton x:Name="StTabSvc" Content="{Binding [st_svc], Source={x:Static loc:Loc.I}}" Style="{StaticResource NavButton}" GroupName="stsub"/>
+                        <RadioButton x:Name="StTabCtx" Content="{Binding [st_ctx], Source={x:Static loc:Loc.I}}" Style="{StaticResource NavButton}" GroupName="stsub"/>
+                    </StackPanel>
+
+                    <Grid Grid.Row="2">
+                        <!-- ===== Под-вкладка: Программы (Run + папки) ===== -->
+                        <Grid Visibility="{Binding IsChecked, ElementName=StTabApps, Converter={StaticResource BoolVis}}">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Grid Grid.Row="0" Margin="6,0,6,8">
+                                <TextBlock Text="{Binding StartupNote}" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center"/>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                    <Button Content="{Binding [btn_enable], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Margin="0,0,8,0" Command="{Binding EnableStartupCommand}"/>
+                                    <Button Content="{Binding [btn_disable], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Margin="0,0,8,0" Command="{Binding DisableStartupCommand}"/>
+                                    <Button Content="{Binding [btn_delete], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Margin="0,0,8,0" Command="{Binding DeleteStartupCommand}"/>
+                                    <Button Content="↻" Style="{StaticResource GhostButton}" Command="{Binding RefreshStartupCommand}"/>
+                                </StackPanel>
+                            </Grid>
+                            <Grid Grid.Row="1" Margin="16,0,16,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="70"/><ColumnDefinition Width="2*"/>
+                                    <ColumnDefinition Width="1.4*"/><ColumnDefinition Width="130"/><ColumnDefinition Width="2*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{Binding [c_on], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
+                                <TextBlock Grid.Column="1" Text="{Binding [c_program], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
+                                <TextBlock Grid.Column="2" Text="{Binding [c_publisher], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
+                                <TextBlock Grid.Column="3" Text="{Binding [c_location], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
+                                <TextBlock Grid.Column="4" Text="{Binding [c_command], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
+                            </Grid>
+                            <ListBox Grid.Row="2" Style="{StaticResource DarkList}" Margin="6,0"
+                                     ItemsSource="{Binding StartupEntries}" SelectedItem="{Binding SelectedStartup}">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="70"/><ColumnDefinition Width="2*"/>
+                                                <ColumnDefinition Width="1.4*"/><ColumnDefinition Width="130"/><ColumnDefinition Width="2*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="{Binding EnabledText}" Foreground="{Binding EnabledBrush}" FontWeight="SemiBold"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding Name}" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Grid.Column="2" Text="{Binding Publisher}" Foreground="{DynamicResource MutedBrush}" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Grid.Column="3" Text="{Binding LocationLabel}" Foreground="{DynamicResource MutedBrush}" FontSize="12"/>
+                                            <TextBlock Grid.Column="4" Text="{Binding Command}" Foreground="{DynamicResource MutedBrush}" FontSize="12" TextTrimming="CharacterEllipsis"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Grid>
+
+                        <!-- ===== Под-вкладка: Задачи ===== -->
+                        <Grid Visibility="{Binding IsChecked, ElementName=StTabTasks, Converter={StaticResource BoolVis}}">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Grid Grid.Row="0" Margin="6,0,6,8">
+                                <TextBlock Text="{Binding TasksNote}" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center"/>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                    <Button Content="{Binding [btn_enable], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Margin="0,0,8,0" Command="{Binding EnableTaskCommand}"/>
+                                    <Button Content="{Binding [btn_disable], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Margin="0,0,8,0" Command="{Binding DisableTaskCommand}"/>
+                                    <Button Content="{Binding [btn_delete], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Margin="0,0,8,0" Command="{Binding DeleteTaskCommand}"/>
+                                    <Button Content="↻" Style="{StaticResource GhostButton}" Command="{Binding RefreshTasksCommand}"/>
+                                </StackPanel>
+                            </Grid>
+                            <Grid Grid.Row="1" Margin="16,0,16,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="70"/><ColumnDefinition Width="2*"/>
+                                    <ColumnDefinition Width="1.4*"/><ColumnDefinition Width="2.4*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{Binding [c_on], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
+                                <TextBlock Grid.Column="1" Text="{Binding [c_name], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
+                                <TextBlock Grid.Column="2" Text="{Binding [c_author], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
+                                <TextBlock Grid.Column="3" Text="{Binding [c_command], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
+                            </Grid>
+                            <ListBox Grid.Row="2" Style="{StaticResource DarkList}" Margin="6,0"
+                                     ItemsSource="{Binding Tasks}" SelectedItem="{Binding SelectedTask}">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="70"/><ColumnDefinition Width="2*"/>
+                                                <ColumnDefinition Width="1.4*"/><ColumnDefinition Width="2.4*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="{Binding EnabledText}" Foreground="{Binding EnabledBrush}" FontWeight="SemiBold"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding Name}" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Grid.Column="2" Text="{Binding Author}" Foreground="{DynamicResource MutedBrush}" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Grid.Column="3" Text="{Binding Command}" Foreground="{DynamicResource MutedBrush}" FontSize="12" TextTrimming="CharacterEllipsis"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Grid>
+
+                        <!-- ===== Под-вкладка: Службы ===== -->
+                        <Grid Visibility="{Binding IsChecked, ElementName=StTabSvc, Converter={StaticResource BoolVis}}">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Grid Grid.Row="0" Margin="6,0,6,8">
+                                <TextBlock Text="{Binding ServicesNote}" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                    <TextBox Width="180" Style="{StaticResource DarkTextBox}" Margin="0,0,8,0"
+                                             Text="{Binding ServicesSearch, UpdateSourceTrigger=PropertyChanged}"/>
+                                    <Button Content="{Binding [btn_enable], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Margin="0,0,8,0" Command="{Binding EnableServiceCommand}"/>
+                                    <Button Content="{Binding [btn_disable], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Margin="0,0,8,0" Command="{Binding DisableServiceCommand}"/>
+                                    <Button Content="↻" Style="{StaticResource GhostButton}" Command="{Binding RefreshServicesCommand}"/>
+                                </StackPanel>
+                            </Grid>
+                            <Grid Grid.Row="1" Margin="16,0,16,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="110"/><ColumnDefinition Width="2.4*"/>
+                                    <ColumnDefinition Width="1.6*"/><ColumnDefinition Width="120"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{Binding [c_state], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
+                                <TextBlock Grid.Column="1" Text="{Binding [c_service], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
+                                <TextBlock Grid.Column="2" Text="{Binding [c_iname], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
+                                <TextBlock Grid.Column="3" Text="{Binding [c_start], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
+                            </Grid>
+                            <ListBox Grid.Row="2" Style="{StaticResource DarkList}" Margin="6,0"
+                                     ItemsSource="{Binding ServicesView}" SelectedItem="{Binding SelectedService}">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="110"/><ColumnDefinition Width="2.4*"/>
+                                                <ColumnDefinition Width="1.6*"/><ColumnDefinition Width="120"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="{Binding StateText}" Foreground="{Binding StateBrush}" FontWeight="SemiBold"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Grid.Column="2" Text="{Binding Name}" Foreground="{DynamicResource MutedBrush}" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Grid.Column="3" Text="{Binding StartModeText}" Foreground="{DynamicResource MutedBrush}"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Grid>
+
+                        <!-- ===== Под-вкладка: Контекстное меню ===== -->
+                        <Grid Visibility="{Binding IsChecked, ElementName=StTabCtx, Converter={StaticResource BoolVis}}">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Grid Grid.Row="0" Margin="6,0,6,8">
+                                <TextBlock Text="{Binding ContextNote}" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center"/>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                    <Button Content="{Binding [btn_enable], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Margin="0,0,8,0" Command="{Binding EnableContextCommand}"/>
+                                    <Button Content="{Binding [btn_disable], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Margin="0,0,8,0" Command="{Binding DisableContextCommand}"/>
+                                    <Button Content="{Binding [btn_delete], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Margin="0,0,8,0" Command="{Binding DeleteContextCommand}"/>
+                                    <Button Content="↻" Style="{StaticResource GhostButton}" Command="{Binding RefreshContextCommand}"/>
+                                </StackPanel>
+                            </Grid>
+                            <Grid Grid.Row="1" Margin="16,0,16,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="70"/><ColumnDefinition Width="2*"/>
+                                    <ColumnDefinition Width="130"/><ColumnDefinition Width="2.4*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{Binding [c_on], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
+                                <TextBlock Grid.Column="1" Text="{Binding [c_menuitem], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
+                                <TextBlock Grid.Column="2" Text="{Binding [c_where], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
+                                <TextBlock Grid.Column="3" Text="{Binding [c_command], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
+                            </Grid>
+                            <ListBox Grid.Row="2" Style="{StaticResource DarkList}" Margin="6,0"
+                                     ItemsSource="{Binding ContextItems}" SelectedItem="{Binding SelectedContext}">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="70"/><ColumnDefinition Width="2*"/>
+                                                <ColumnDefinition Width="130"/><ColumnDefinition Width="2.4*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="{Binding EnabledText}" Foreground="{Binding EnabledBrush}" FontWeight="SemiBold"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Grid.Column="2" Text="{Binding Location}" Foreground="{DynamicResource MutedBrush}" FontSize="12"/>
+                                            <TextBlock Grid.Column="3" Text="{Binding Command}" Foreground="{DynamicResource MutedBrush}" FontSize="12" TextTrimming="CharacterEllipsis"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Grid>
+                    </Grid>
+                </Grid>
+
+                <!-- ===== Страница: Удаление программ ===== -->
+                <Grid Visibility="{Binding IsChecked, ElementName=NavApps, Converter={StaticResource BoolVis}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="6,4,6,8">
+                        <StackPanel>
+                            <TextBlock Text="{Binding [hdr_apps], Source={x:Static loc:Loc.I}}" FontSize="22" FontWeight="Bold"/>
+                            <TextBlock Text="{Binding AppsNote}" Foreground="{DynamicResource MutedBrush}" Margin="0,4,0,0"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
+                            <TextBox Width="220" Style="{StaticResource DarkTextBox}" Margin="0,0,8,0"
+                                     Text="{Binding AppSearch, UpdateSourceTrigger=PropertyChanged}"/>
+                            <Button Content="↻" Style="{StaticResource GhostButton}" Command="{Binding RefreshAppsCommand}"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- Тулбар действий -->
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="6,0,6,8">
+                        <Button Content="{Binding [un_uninstall], Source={x:Static loc:Loc.I}}" Style="{StaticResource DangerButton}" Margin="0,0,8,0"
+                                Padding="16,8" Command="{Binding UninstallCommand}"/>
+                        <Button Content="{Binding [un_repair], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Margin="0,0,8,0"
+                                Command="{Binding RepairCommand}"/>
+                        <Button Content="{Binding [un_rename], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Margin="0,0,8,0"
+                                Command="{Binding RenameCommand}"/>
+                        <Button Content="{Binding [un_remove], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}"
+                                Command="{Binding RemoveEntryCommand}"/>
+                    </StackPanel>
+
+                    <Grid Grid.Row="2" Margin="16,0,16,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="200"/>
+                            <ColumnDefinition Width="110"/>
+                            <ColumnDefinition Width="100"/>
+                            <ColumnDefinition Width="140"/>
+                        </Grid.ColumnDefinitions>
+                        <Button Grid.Column="0" Content="{Binding [uc_program], Source={x:Static loc:Loc.I}}" Style="{StaticResource ColumnHeader}"
+                                Command="{Binding SortAppsCommand}" CommandParameter="name"/>
+                        <Button Grid.Column="1" Content="{Binding [uc_publisher], Source={x:Static loc:Loc.I}}" Style="{StaticResource ColumnHeader}"
+                                Command="{Binding SortAppsCommand}" CommandParameter="pub"/>
+                        <Button Grid.Column="2" Content="{Binding [uc_installed], Source={x:Static loc:Loc.I}}" Style="{StaticResource ColumnHeader}"
+                                Command="{Binding SortAppsCommand}" CommandParameter="date"/>
+                        <Button Grid.Column="3" Content="{Binding [uc_size], Source={x:Static loc:Loc.I}}" Style="{StaticResource ColumnHeader}"
+                                Command="{Binding SortAppsCommand}" CommandParameter="size"/>
+                        <Button Grid.Column="4" Content="{Binding [uc_version], Source={x:Static loc:Loc.I}}" Style="{StaticResource ColumnHeader}"
+                                Command="{Binding SortAppsCommand}" CommandParameter="ver"/>
+                    </Grid>
+
+                    <ListBox Grid.Row="3" Style="{StaticResource DarkList}" Margin="6,0"
+                             ItemsSource="{Binding AppsView}" SelectedItem="{Binding SelectedApp}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="200"/>
+                                        <ColumnDefinition Width="110"/>
+                                        <ColumnDefinition Width="100"/>
+                                        <ColumnDefinition Width="140"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{Binding Name}" TextTrimming="CharacterEllipsis" FontWeight="SemiBold"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding Publisher}" Foreground="{DynamicResource MutedBrush}" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Grid.Column="2" Text="{Binding DateText}" Foreground="{DynamicResource MutedBrush}"/>
+                                    <TextBlock Grid.Column="3" Text="{Binding SizeText}" Foreground="{DynamicResource MutedBrush}"/>
+                                    <TextBlock Grid.Column="4" Text="{Binding Version}" Foreground="{DynamicResource MutedBrush}" TextTrimming="CharacterEllipsis"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+
+                <!-- ===== Страница: Поиск файлов (клон WizTree) ===== -->
+                <Grid Visibility="{Binding IsChecked, ElementName=NavFiles, Converter={StaticResource BoolVis}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Заголовок + выбор диска/папки + Анализ -->
+                    <Grid Grid.Row="0" Margin="6,4,6,8">
+                        <TextBlock Text="{Binding [hdr_files], Source={x:Static loc:Loc.I}}" FontSize="22" FontWeight="Bold" VerticalAlignment="Center"/>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <ComboBox Width="300" Style="{StaticResource DarkCombo}" ItemContainerStyle="{StaticResource DarkComboItem}"
+                                      ItemsSource="{Binding Drives}" SelectedItem="{Binding SelectedDrive}" Margin="0,0,8,0"/>
+                            <Button Content="{Binding [fs_browse], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Margin="0,0,8,0" Command="{Binding BrowseFolderCommand}"/>
+                            <Button Content="{Binding [fs_analyze], Source={x:Static loc:Loc.I}}" Style="{StaticResource AccentButton}" Padding="18,8" Command="{Binding AnalyzeCommand}"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- Сводка по тому -->
+                    <Border Grid.Row="1" Style="{StaticResource Card}" Margin="6,0,6,8" Padding="14,8">
+                        <Grid>
+                            <StackPanel>
+                                <TextBlock Text="{Binding TargetDisplay}" FontWeight="SemiBold" Foreground="{DynamicResource AccentTextBrush}" TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Text="{Binding ScanStats}" Foreground="{DynamicResource MutedBrush}" FontSize="12" Margin="0,3,0,0"/>
+                                <TextBlock Text="{Binding ScanDrive}" Foreground="{DynamicResource MutedBrush}" FontSize="12" Margin="0,1,0,0"/>
+                            </StackPanel>
+                            <TextBlock Text="{Binding ScanStatus}" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                       Foreground="{DynamicResource MutedBrush}" FontSize="12"/>
+                        </Grid>
+                    </Border>
+
+                    <!-- Вкладки Дерево / Файлы -->
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="6,0,0,8">
+                        <RadioButton x:Name="FlTabTree" Content="{Binding [fs_tree], Source={x:Static loc:Loc.I}}" Style="{StaticResource NavButton}" GroupName="filessub" IsChecked="True"/>
+                        <RadioButton x:Name="FlTabFiles" Content="{Binding [fs_files], Source={x:Static loc:Loc.I}}" Style="{StaticResource NavButton}" GroupName="filessub"/>
+                    </StackPanel>
+
+                    <!-- Контент + карта диска снизу -->
+                    <Grid Grid.Row="3">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="2*" MinHeight="120"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="1.1*" MinHeight="120"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- ВЕРХ: дерево или плоский список файлов -->
+                        <Grid Grid.Row="0">
+                            <!-- Дерево + типы файлов -->
+                            <Grid Visibility="{Binding IsChecked, ElementName=FlTabTree, Converter={StaticResource BoolVis}}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" MinWidth="320"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="340" MinWidth="220"/>
+                                </Grid.ColumnDefinitions>
+
+                                <!-- Дерево -->
+                                <Border Grid.Column="0" Style="{StaticResource Card}" Margin="6,0,3,0" Padding="0,6">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="*"/>
+                                        </Grid.RowDefinitions>
+                                        <!-- шапка колонок -->
+                                        <Grid Grid.Row="0" Margin="12,2,14,6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="100"/>
+                                                <ColumnDefinition Width="86"/>
+                                                <ColumnDefinition Width="86"/>
+                                                <ColumnDefinition Width="68"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="{Binding [fs_c_folder], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding [fs_c_percent], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
+                                            <TextBlock Grid.Column="2" Text="{Binding [fs_c_size], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}" HorizontalAlignment="Right"/>
+                                            <TextBlock Grid.Column="3" Text="{Binding [fs_c_disk], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}" HorizontalAlignment="Right"/>
+                                            <TextBlock Grid.Column="4" Text="{Binding [fs_c_files], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}" HorizontalAlignment="Right"/>
+                                        </Grid>
+                                        <ListBox x:Name="TreeListBox" Grid.Row="1" Style="{StaticResource DarkList}"
+                                                 ItemContainerStyle="{StaticResource RowItem}"
+                                                 ItemsSource="{Binding TreeRows}"
+                                                 MouseDoubleClick="TreeRow_DoubleClick"
+                                                 PreviewMouseRightButtonUp="Row_RightClick"
+                                                 VirtualizingStackPanel.IsVirtualizing="True"
+                                                 VirtualizingStackPanel.VirtualizationMode="Recycling"
+                                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                            <ListBox.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="12,0,14,0">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="100"/>
+                                                            <ColumnDefinition Width="86"/>
+                                                            <ColumnDefinition Width="86"/>
+                                                            <ColumnDefinition Width="68"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <!-- имя: отступ + кликабельный (шеврон+значок раскрывают папку) + текст -->
+                                                        <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="{Binding Indent}">
+                                                            <Button Command="{Binding ToggleCommand}" Style="{StaticResource ColumnHeader}"
+                                                                    VerticalAlignment="Center" ToolTip="{Binding [tip_expand], Source={x:Static loc:Loc.I}}">
+                                                                <StackPanel Orientation="Horizontal">
+                                                                    <TextBlock Text="{Binding Glyph}" Width="14" FontSize="10"
+                                                                               Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center"/>
+                                                                    <Rectangle Width="9" Height="9" RadiusX="2" RadiusY="2" Margin="0,0,7,0"
+                                                                               Fill="{Binding RowIcon}" VerticalAlignment="Center"/>
+                                                                </StackPanel>
+                                                            </Button>
+                                                            <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                                        </StackPanel>
+                                                        <!-- процент-бар -->
+                                                        <Grid Grid.Column="1" Margin="6,0,10,0" VerticalAlignment="Center">
+                                                            <Border Background="{DynamicResource TrackBrush}" CornerRadius="3" Height="11" HorizontalAlignment="Stretch"/>
+                                                            <Border Background="{StaticResource AccentBrush}" CornerRadius="3" Height="11"
+                                                                    HorizontalAlignment="Left" Width="{Binding BarWidth}"/>
+                                                        </Grid>
+                                                        <TextBlock Grid.Column="2" Text="{Binding SizeText}" HorizontalAlignment="Right"
+                                                                   VerticalAlignment="Center" Foreground="{DynamicResource AccentTextBrush}" FontSize="12"/>
+                                                        <TextBlock Grid.Column="3" Text="{Binding AllocText}" HorizontalAlignment="Right"
+                                                                   VerticalAlignment="Center" Foreground="{DynamicResource MutedBrush}" FontSize="12"/>
+                                                        <TextBlock Grid.Column="4" Text="{Binding FilesText}" HorizontalAlignment="Right"
+                                                                   VerticalAlignment="Center" Foreground="{DynamicResource MutedBrush}" FontSize="12"/>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ListBox.ItemTemplate>
+                                        </ListBox>
+                                    </Grid>
+                                </Border>
+
+                                <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Center"
+                                              VerticalAlignment="Stretch" Background="Transparent"/>
+
+                                <!-- Типы файлов -->
+                                <Border Grid.Column="2" Style="{StaticResource Card}" Margin="3,0,6,0" Padding="0,6">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="*"/>
+                                        </Grid.RowDefinitions>
+                                        <TextBlock Grid.Row="0" Text="{Binding [fs_c_types], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}" Margin="14,2,14,6"/>
+                                        <ListBox Grid.Row="1" Style="{StaticResource DarkList}"
+                                                 ItemContainerStyle="{StaticResource RowItem}"
+                                                 ItemsSource="{Binding Extensions}"
+                                                 VirtualizingStackPanel.IsVirtualizing="True"
+                                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                            <ListBox.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="14,0,14,0">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <Rectangle Grid.Column="0" Width="11" Height="11" RadiusX="2" RadiusY="2"
+                                                                   Fill="{Binding Swatch}" Margin="0,0,9,0" VerticalAlignment="Center"/>
+                                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                            <TextBlock Text="{Binding Ext}" FontWeight="SemiBold" FontSize="13" TextTrimming="CharacterEllipsis"/>
+                                                            <TextBlock Text="{Binding TypeName}" Foreground="{DynamicResource MutedBrush}" FontSize="11" TextTrimming="CharacterEllipsis"/>
+                                                        </StackPanel>
+                                                        <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">
+                                                            <TextBlock Text="{Binding SizeText}" Foreground="{DynamicResource AccentTextBrush}" FontSize="12" HorizontalAlignment="Right"/>
+                                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                                                <TextBlock Text="{Binding PercentText}" Foreground="{DynamicResource MutedBrush}" FontSize="11"/>
+                                                                <TextBlock Text="  ·  " Foreground="{DynamicResource MutedBrush}" FontSize="11"/>
+                                                                <TextBlock Text="{Binding FilesText}" Foreground="{DynamicResource MutedBrush}" FontSize="11"/>
+                                                            </StackPanel>
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ListBox.ItemTemplate>
+                                        </ListBox>
+                                    </Grid>
+                                </Border>
+                            </Grid>
+
+                            <!-- Плоский список файлов -->
+                            <Border Visibility="{Binding IsChecked, ElementName=FlTabFiles, Converter={StaticResource BoolVis}}"
+                                    Style="{StaticResource Card}" Margin="6,0,6,0" Padding="0,6">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
+                                    <Grid Grid.Row="0" Margin="12,2,14,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="2*"/>
+                                            <ColumnDefinition Width="3*"/>
+                                            <ColumnDefinition Width="90"/>
+                                            <ColumnDefinition Width="90"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="{Binding [fs_c_name], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding [fs_c_folder2], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding [fs_c_size], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}" HorizontalAlignment="Right"/>
+                                        <TextBlock Grid.Column="3" Text="{Binding [fs_c_disk], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}" HorizontalAlignment="Right"/>
+                                    </Grid>
+                                    <ListBox Grid.Row="1" Style="{StaticResource DarkList}"
+                                             ItemContainerStyle="{StaticResource RowItem}"
+                                             ItemsSource="{Binding FilesList}" SelectedItem="{Binding SelectedFile}"
+                                             MouseDoubleClick="FileRow_DoubleClick"
+                                             PreviewMouseRightButtonUp="Row_RightClick"
+                                             VirtualizingStackPanel.IsVirtualizing="True"
+                                             VirtualizingStackPanel.VirtualizationMode="Recycling"
+                                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="12,0,14,0">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="2*"/>
+                                                        <ColumnDefinition Width="3*"/>
+                                                        <ColumnDefinition Width="90"/>
+                                                        <ColumnDefinition Width="90"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Grid.Column="0" Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                                                    <TextBlock Grid.Column="1" Text="{Binding Folder}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Foreground="{DynamicResource MutedBrush}" FontSize="12"/>
+                                                    <TextBlock Grid.Column="2" Text="{Binding SizeText}" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{DynamicResource AccentTextBrush}" FontSize="12"/>
+                                                    <TextBlock Grid.Column="3" Text="{Binding AllocText}" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{DynamicResource MutedBrush}" FontSize="12"/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </Grid>
+                            </Border>
+                        </Grid>
+
+                        <GridSplitter Grid.Row="1" Height="5" HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                                      Background="{DynamicResource CardBorderBrush}" Margin="6,3"/>
+
+                        <!-- НИЗ: карта диска (treemap) -->
+                        <Border Grid.Row="2" CornerRadius="10" ClipToBounds="True" Margin="6,0,6,0"
+                                Background="{DynamicResource CardSurface}"
+                                BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1">
+                            <Grid>
+                                <ctrl:TreemapView x:Name="Treemap" Root="{Binding MapRoot, Mode=TwoWay}"/>
+                                <Button Content="{Binding [fs_up], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}"
+                                        HorizontalAlignment="Right" VerticalAlignment="Top" Margin="8" Command="{Binding MapUpCommand}"/>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Grid>
+
+                <!-- ===== Страница: Диагностика (диски + батарея + загрузка) ===== -->
+                <Grid Visibility="{Binding IsChecked, ElementName=NavDiag, Converter={StaticResource BoolVis}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="6,4,6,8">
+                        <StackPanel>
+                            <TextBlock Text="{Binding [hdr_diag], Source={x:Static loc:Loc.I}}" FontSize="22" FontWeight="Bold"/>
+                            <TextBlock Text="{Binding ReportNote}" Foreground="{DynamicResource AccentTextBrush}" FontSize="12" Margin="0,4,0,0"
+                                       TextTrimming="CharacterEllipsis"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
+                            <Button Content="{Binding [report_btn], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Margin="0,0,8,0"
+                                    Command="{Binding ExportReportCommand}"/>
+                            <Button Content="{Binding [btn_refresh], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}"
+                                    Command="{Binding RefreshHealthCommand}"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                        <StackPanel Margin="6,0">
+                        <TextBlock Text="{Binding [hdr_health], Source={x:Static loc:Loc.I}}" FontSize="13" FontWeight="Bold"
+                                   Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,2"/>
+                        <TextBlock Text="{Binding HealthNote}" Foreground="{DynamicResource MutedBrush}" FontSize="12" Margin="0,0,0,6"/>
+                        <ItemsControl ItemsSource="{Binding DiskHealth}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Style="{StaticResource Card}" Margin="0,6" Padding="18">
+                                        <StackPanel>
+                                            <!-- Заголовок диска -->
+                                            <Grid>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="💽" FontSize="20" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="Bold"
+                                                               Margin="10,0,0,0" VerticalAlignment="Center"/>
+                                                    <Border Background="#33DDB44B" CornerRadius="5" Padding="8,2" Margin="10,0,0,0"
+                                                            VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding TypeBadge}" FontSize="11" Foreground="{DynamicResource AccentTextBrush}"/>
+                                                    </Border>
+                                                </StackPanel>
+                                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding SizeText}" FontSize="13" Foreground="{DynamicResource MutedBrush}"
+                                                               VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                                    <Border CornerRadius="6" Padding="10,4" Background="{Binding StateBrush}">
+                                                        <TextBlock Text="{Binding StateText}" Foreground="#FF14140F" FontWeight="SemiBold" FontSize="12"/>
+                                                    </Border>
+                                                </StackPanel>
+                                            </Grid>
+
+                                            <!-- Метрики -->
+                                            <UniformGrid Columns="4" Margin="0,16,0,0">
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding [dh_temp], Source={x:Static loc:Loc.I}}" FontSize="10" Foreground="{DynamicResource MutedBrush}"/>
+                                                    <TextBlock Text="{Binding TempText}" FontSize="18" FontWeight="Bold" Margin="0,3,0,0"/>
+                                                </StackPanel>
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding [dh_hours], Source={x:Static loc:Loc.I}}" FontSize="10" Foreground="{DynamicResource MutedBrush}"/>
+                                                    <TextBlock Text="{Binding PowerOnText}" FontSize="18" FontWeight="Bold" Margin="0,3,0,0"/>
+                                                </StackPanel>
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding [dh_wear], Source={x:Static loc:Loc.I}}" FontSize="10" Foreground="{DynamicResource MutedBrush}"/>
+                                                    <TextBlock Text="{Binding WearText}" FontSize="18" FontWeight="Bold" Margin="0,3,0,0"/>
+                                                </StackPanel>
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding [dh_errors], Source={x:Static loc:Loc.I}}" FontSize="10" Foreground="{DynamicResource MutedBrush}"/>
+                                                    <TextBlock Text="{Binding ErrorsText}" FontSize="13" Margin="0,6,0,0"/>
+                                                </StackPanel>
+                                            </UniformGrid>
+
+                                            <TextBlock Text="{Binding [dh_admin], Source={x:Static loc:Loc.I}}"
+                                                       FontSize="11" Foreground="#FFDDB44B" Margin="0,14,0,0"
+                                                       Visibility="{Binding ReliabilityUnavailable, Converter={StaticResource BoolVis}}"/>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- Батарея -->
+                        <Border Style="{StaticResource Card}" Padding="16,12" Margin="0,12,0,0">
+                            <StackPanel>
+                                <Grid>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="🔋" FontSize="18" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                        <TextBlock Text="{Binding [bat_title], Source={x:Static loc:Loc.I}}" FontSize="16" FontWeight="Bold" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <Button Content="↻" Style="{StaticResource GhostButton}" HorizontalAlignment="Right" VerticalAlignment="Top"
+                                            Command="{Binding RefreshBatteryCommand}"/>
+                                </Grid>
+                                <TextBlock Text="{Binding BatteryNote}" Foreground="{DynamicResource MutedBrush}" FontSize="12" Margin="0,5,0,0" TextWrapping="Wrap"/>
+
+                                <!-- Текущий заряд + состояние -->
+                                <StackPanel Margin="0,10,0,0" Visibility="{Binding BatHasCharge, Converter={StaticResource BoolVis}}">
+                                    <Grid>
+                                        <TextBlock Text="{Binding [bat_charge], Source={x:Static loc:Loc.I}}" FontSize="11"
+                                                   Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Bottom"/>
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                                            <TextBlock Text="{Binding BatCharge}" FontSize="13" FontWeight="SemiBold"/>
+                                            <TextBlock Text=" · " FontSize="13" Foreground="{DynamicResource MutedBrush}"/>
+                                            <TextBlock Text="{Binding BatState}" FontSize="13" Foreground="{DynamicResource MutedBrush}"/>
+                                        </StackPanel>
+                                    </Grid>
+                                    <Border Width="520" Height="8" CornerRadius="4" Background="{DynamicResource TrackBrush}"
+                                            Margin="0,5,0,0" HorizontalAlignment="Left" ClipToBounds="True">
+                                        <Border CornerRadius="4" HorizontalAlignment="Left" Background="{Binding BatChargeBrush}"
+                                                Width="{Binding BatChargePercent, Converter={StaticResource PctWidth}, ConverterParameter=520}"/>
+                                    </Border>
+                                </StackPanel>
+
+                                <UniformGrid Columns="4" Margin="0,12,0,0"
+                                             Visibility="{Binding BatteryPresent, Converter={StaticResource BoolVis}}">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding [bat_wear], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
+                                        <TextBlock Text="{Binding BatWear}" FontSize="16" FontWeight="SemiBold" Foreground="{Binding BatWearBrush}" Margin="0,1,0,0"/>
+                                    </StackPanel>
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding [bat_cycles], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
+                                        <TextBlock Text="{Binding BatCycles}" FontSize="16" FontWeight="SemiBold" Margin="0,1,0,0"/>
+                                    </StackPanel>
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding [bat_design], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
+                                        <TextBlock Text="{Binding BatDesign}" FontSize="16" FontWeight="SemiBold" Margin="0,1,0,0"/>
+                                    </StackPanel>
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding [bat_full], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
+                                        <TextBlock Text="{Binding BatFull}" FontSize="16" FontWeight="SemiBold" Margin="0,1,0,0"/>
+                                    </StackPanel>
+                                </UniformGrid>
+
+                                <!-- Паспорт батареи -->
+                                <StackPanel Margin="0,12,0,0" Visibility="{Binding BatHasDevice, Converter={StaticResource BoolVis}}">
+                                    <Border Height="1" Background="{DynamicResource CardBorderBrush}"/>
+                                    <TextBlock Text="{Binding BatDevice}" FontSize="12" Foreground="{DynamicResource MutedBrush}"
+                                               Margin="0,10,0,0" TextWrapping="Wrap"/>
+                                    <TextBlock Text="{Binding BatSerial}" FontSize="11" Foreground="{DynamicResource MutedBrush}"
+                                               Margin="0,2,0,0" TextWrapping="Wrap"/>
+                                </StackPanel>
+
+                                <!-- Вердикт по износу -->
+                                <TextBlock Text="{Binding BatVerdict}" FontSize="12" FontWeight="SemiBold" Margin="0,12,0,0"
+                                           Foreground="{Binding BatWearBrush}" TextWrapping="Wrap"
+                                           Visibility="{Binding BatteryPresent, Converter={StaticResource BoolVis}}"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Время загрузки -->
+                        <Border Style="{StaticResource Card}" Padding="18,16" Margin="0,12,0,6">
+                            <StackPanel>
+                                <Grid>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="🚀" FontSize="20" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                        <TextBlock Text="{Binding [boot_title], Source={x:Static loc:Loc.I}}" FontSize="16" FontWeight="Bold" VerticalAlignment="Center"/>
+                                        <Border Background="#33DDB44B" CornerRadius="4" Padding="6,1" Margin="10,0,0,0" VerticalAlignment="Center">
+                                            <TextBlock Text="beta" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource AccentTextBrush}"/>
+                                        </Border>
+                                    </StackPanel>
+                                    <Button Content="↻" Style="{StaticResource GhostButton}" HorizontalAlignment="Right" VerticalAlignment="Top"
+                                            Command="{Binding RefreshBootCommand}"/>
+                                </Grid>
+                                <TextBlock Text="{Binding BootNote}" Foreground="{DynamicResource MutedBrush}" Margin="0,8,0,0" TextWrapping="Wrap"/>
+                                <StackPanel Margin="0,10,0,0" Visibility="{Binding BootHasSlow, Converter={StaticResource BoolVis}}">
+                                    <TextBlock Text="{Binding [boot_slow_head], Source={x:Static loc:Loc.I}}" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,2"/>
+                                    <TextBlock Text="{Binding [boot_slow_hint], Source={x:Static loc:Loc.I}}" FontSize="11"
+                                               Foreground="{DynamicResource MutedBrush}" Opacity="0.8" Margin="0,0,0,4" TextWrapping="Wrap"/>
+                                    <ItemsControl ItemsSource="{Binding BootSlow}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,3">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Grid.Column="0" Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                                    <TextBlock Grid.Column="1" Text="{Binding Info}" Foreground="{DynamicResource AccentTextBrush}"
+                                                               FontWeight="SemiBold" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+
+
+                <!-- ===== Страница: О программе ===== -->
+                <Grid Visibility="{Binding IsChecked, ElementName=NavAbout, Converter={StaticResource BoolVis}}">
+                    <Border Style="{StaticResource Card}" Margin="6,4,6,6" VerticalAlignment="Top" Padding="36,40"
+                            HorizontalAlignment="Center" MaxWidth="460">
+                        <StackPanel HorizontalAlignment="Center">
+                            <Border Width="78" Height="78" CornerRadius="20" Background="{StaticResource AccentGradient}"
+                                    HorizontalAlignment="Center">
+                                <Border.Effect><DropShadowEffect BlurRadius="26" ShadowDepth="0" Color="#DDB44B" Opacity="0.5"/></Border.Effect>
+                                <TextBlock Text="N" Foreground="#FF1A1407" FontSize="42" FontWeight="Bold"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+
+                            <TextBlock Text="NakClean" FontSize="32" FontWeight="Bold"
+                                       HorizontalAlignment="Center" Margin="0,18,0,0"/>
+                            <TextBlock Text="{Binding [about_tagline], Source={x:Static loc:Loc.I}}" FontSize="13"
+                                       Foreground="{DynamicResource MutedBrush}" HorizontalAlignment="Center"
+                                       TextAlignment="Center" Margin="0,6,0,0"/>
+
+                            <Border Background="#22DDB44B" CornerRadius="20" Padding="16,6" Margin="0,18,0,0" HorizontalAlignment="Center">
+                                <TextBlock Text="{Binding AppVersionShort}" Foreground="{DynamicResource AccentTextBrush}" FontWeight="SemiBold" FontSize="13"/>
+                            </Border>
+                            <TextBlock Text="{Binding [about_author], Source={x:Static loc:Loc.I}}" FontSize="15"
+                                       HorizontalAlignment="Center" Margin="0,16,0,0"/>
+
+                            <!-- Ссылка на GitHub -->
+                            <Button Style="{StaticResource GhostButton}" Click="GithubLink_Click" Margin="0,18,0,0"
+                                    HorizontalAlignment="Center" Cursor="Hand">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="🔗" FontSize="14" VerticalAlignment="Center"/>
+                                    <TextBlock Text="github.com/nakv1" Margin="8,0,0,0" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource AccentTextBrush}" FontWeight="SemiBold"/>
+                                </StackPanel>
+                            </Button>
+
+                            <TextBlock Text="© 2026 nak (github.com/nakv1) · Все права защищены" FontSize="11"
+                                       Foreground="{DynamicResource MutedBrush}" HorizontalAlignment="Center"
+                                       Margin="0,22,0,0"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <!-- Оверлей занятости -->
+                <Border Background="#990A1020" Visibility="{Binding IsBusy, Converter={StaticResource BoolVis}}">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock Text="⏳" FontSize="40" HorizontalAlignment="Center"/>
+                        <TextBlock Text="{Binding Status}" Margin="0,12,0,0" FontSize="15" HorizontalAlignment="Center"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Grid>
+    </Grid>
+</Window>

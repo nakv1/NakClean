@@ -1,0 +1,15 @@
+<UserControl x:Class="NakClean.Controls.CircularGauge"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Width="132" Height="132">
+    <Grid>
+        <Path x:Name="Arc" StrokeThickness="12" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+              Stroke="{Binding Accent, RelativeSource={RelativeSource AncestorType=UserControl}}"/>
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+            <TextBlock x:Name="ValueLabel" FontSize="26" FontWeight="Bold"
+                       HorizontalAlignment="Center" Foreground="{DynamicResource TextBrush}"/>
+            <TextBlock x:Name="CaptionLabel" FontSize="12" Margin="0,2,0,0"
+                       HorizontalAlignment="Center" Foreground="{DynamicResource MutedBrush}"/>
+        </StackPanel>
+    </Grid>
+</UserControl>

@@ -1,0 +1,28 @@
+# ---- Build output ----
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+publish/
+*.publish/
+
+# ---- Visual Studio / Rider ----
+.vs/
+.idea/
+*.user
+*.suo
+*.userprefs
+
+# ---- OS ----
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# ---- Misc ----
+*.log
+*.tmp
+
+# Внутренние заметки (не для репозитория)
+HANDOFF.md

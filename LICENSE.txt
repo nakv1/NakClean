@@ -1,0 +1,72 @@
+NakClean — Proprietary License / Проприетарная лицензия
+© 2026 nak (github.com/nakv1). All rights reserved. Все права защищены.
+
+Author / Автор: nak  (https://github.com/nakv1)
+
+================================================================
+ENGLISH
+================================================================
+
+This software ("NakClean"), including its source code, compiled
+binaries, design, name, logo and all related materials, is the
+exclusive intellectual property of the author ("nak").
+
+You MAY:
+  - Download and use the official build of NakClean for personal,
+    non-commercial purposes.
+
+You MAY NOT, without prior written permission of the author:
+  - Copy, reproduce, redistribute or resell the software or its
+    source code, in whole or in part.
+  - Decompile, disassemble, reverse-engineer or otherwise attempt
+    to derive the source code, except where such restriction is
+    expressly prohibited by applicable law.
+  - Modify the software and distribute the modified version,
+    including versions produced with the help of automated
+    tools ("derivative works").
+  - Remove, alter or obscure any copyright, author, branding or
+    watermark notices.
+  - Claim authorship of the software or any derivative of it, or
+    present it as your own work.
+
+Any derivative work based on this software remains subject to the
+author's copyright. Unauthorized use is a violation of copyright
+law and may be pursued, including via DMCA takedown requests.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
+The author is not liable for any damages arising from its use.
+
+================================================================
+РУССКИЙ
+================================================================
+
+Данная программа («NakClean»), включая её исходный код,
+скомпилированные сборки, дизайн, название, логотип и все связанные
+материалы, является исключительной интеллектуальной собственностью
+автора («nak»).
+
+РАЗРЕШАЕТСЯ:
+  - Скачивать и использовать официальную сборку NakClean в личных,
+    некоммерческих целях.
+
+ЗАПРЕЩАЕТСЯ без письменного разрешения автора:
+  - Копировать, воспроизводить, распространять или перепродавать
+    программу либо её исходный код, полностью или частично.
+  - Декомпилировать, дизассемблировать, проводить обратную
+    разработку или иным способом восстанавливать исходный код,
+    кроме случаев, прямо разрешённых законом.
+  - Изменять программу и распространять изменённую версию, в том
+    числе созданную с помощью автоматических инструментов
+    («производные произведения»).
+  - Удалять, изменять или скрывать уведомления об авторских правах,
+    об авторе, элементы бренда или водяные знаки.
+  - Заявлять авторство на программу или любое производное от неё,
+    либо выдавать её за собственную разработку.
+
+Любое производное произведение на основе данной программы остаётся
+объектом авторских прав автора. Несанкционированное использование
+является нарушением авторского права и может преследоваться, в том
+числе через запросы на удаление (DMCA).
+
+ПРОГРАММА ПРЕДОСТАВЛЯЕТСЯ «КАК ЕСТЬ», БЕЗ КАКИХ-ЛИБО ГАРАНТИЙ.
+Автор не несёт ответственности за любой ущерб от её использования.
