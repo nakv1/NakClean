@@ -1209,7 +1209,8 @@
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
                             <ComboBox ItemsSource="{Binding RecoveryDrives}" SelectedItem="{Binding SelectedRecoveryDrive}"
-                                      Style="{StaticResource DarkCombo}" Width="84" Height="38" Margin="0,0,8,0"/>
+                                      Style="{StaticResource DarkCombo}" ItemContainerStyle="{StaticResource DarkComboItem}"
+                                      Width="84" Height="38" Margin="0,0,8,0"/>
                             <Button Content="{Binding [rec_scan], Source={x:Static loc:Loc.I}}" Style="{StaticResource AccentButton}"
                                     Command="{Binding ScanDeletedCommand}" IsEnabled="{Binding RecoveryIdle}"/>
                         </StackPanel>
