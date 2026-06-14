@@ -87,6 +87,7 @@ public sealed class MainViewModel : ViewModelBase
     public RelayCommand OpenReleaseCommand { get; }
     public RelayCommand ScanDeletedCommand { get; }
     public RelayCommand RecoverSelectedCommand { get; }
+    public RelayCommand SelectCategoryCommand { get; }
 
     public MainViewModel()
     {
@@ -157,8 +158,9 @@ public sealed class MainViewModel : ViewModelBase
         OpenReleaseCommand = new RelayCommand(OpenRelease);
         ScanDeletedCommand = new RelayCommand(async () => await ScanDeletedAsync(), () => !RecoveryBusy);
         RecoverSelectedCommand = new RelayCommand(async () => await RecoverSelectedAsync(), () => !RecoveryBusy);
+        SelectCategoryCommand = new RelayCommand(p => SelectCategory(p as string ?? "all"));
         RecoveredView = CollectionViewSource.GetDefaultView(Recovered);
-        RecoveredView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(RecoveryFileVm.Category)));
+        RecoveredView.Filter = RecoveryFilter;
         BuildRecoveryDrives();
 
         foreach (var t in OptimizationService.BuildTweaks())
@@ -546,6 +548,28 @@ public sealed class MainViewModel : ViewModelBase
     public ObservableCollection<RecoveryFileVm> Recovered { get; } = new();
     public ICollectionView RecoveredView { get; }
     public ObservableCollection<string> RecoveryDrives { get; } = new();
+    public ObservableCollection<RecoveryCategoryVm> RecoveryCategories { get; } = new();
+
+    private string _categoryFilter = "all";
+    private bool RecoveryFilter(object o) =>
+        _categoryFilter == "all" || ((RecoveryFileVm)o).Category == _categoryFilter;
+
+    private void SelectCategory(string key)
+    {
+        _categoryFilter = key;
+        foreach (var c in RecoveryCategories) c.IsSelected = c.Key == key;
+        RecoveredView.Refresh();
+    }
+
+    private void RebuildCategories()
+    {
+        RecoveryCategories.Clear();
+        _categoryFilter = "all";
+        RecoveryCategories.Add(new RecoveryCategoryVm { Key = "all", Name = Loc.I["rec_all"], Count = Recovered.Count, IsSelected = true });
+        foreach (var g in Recovered.GroupBy(r => r.Category).OrderByDescending(g => g.Count()))
+            RecoveryCategories.Add(new RecoveryCategoryVm { Key = g.Key, Name = g.Key, Count = g.Count() });
+        RecoveredView.Refresh();
+    }
 
     private string? _selectedRecoveryDrive;
     public string? SelectedRecoveryDrive { get => _selectedRecoveryDrive; set => Set(ref _selectedRecoveryDrive, value); }
@@ -592,11 +616,13 @@ public sealed class MainViewModel : ViewModelBase
         RecoveryBusy = true;
         RecoveryNote = Loc.I["rec_scanning"];
         Recovered.Clear();
+        RecoveryCategories.Clear();
         try
         {
             var list = await Task.Run(() => NtfsMftReader.EnumerateDeleted(letter, CancellationToken.None));
             foreach (var f in list.OrderByDescending(x => x.Chance).ThenByDescending(x => x.Size).Take(5000))
                 Recovered.Add(new RecoveryFileVm(f));
+            RebuildCategories();
             RecoveryNote = Recovered.Count == 0
                 ? Loc.I["rec_empty"]
                 : string.Format(Loc.I["rec_found"], Recovered.Count);

@@ -1197,9 +1197,43 @@
                 <Grid Visibility="{Binding IsChecked, ElementName=NavRecovery, Converter={StaticResource BoolVis}}">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
+
+                    <!-- Разделы-фильтры -->
+                    <ItemsControl Grid.Row="1" ItemsSource="{Binding RecoveryCategories}" Margin="6,0,6,8">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Cursor="Hand" Margin="0,0,8,8"
+                                        Command="{Binding DataContext.SelectCategoryCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                        CommandParameter="{Binding Key}">
+                                    <Button.Template>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border x:Name="cb" CornerRadius="9" Padding="13,7"
+                                                    Background="{DynamicResource CtrlFillBrush}"
+                                                    BorderBrush="{DynamicResource CtrlBorderBrush}" BorderThickness="1">
+                                                <TextBlock Text="{Binding Label}" FontSize="12"/>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="cb" Property="Background" Value="{DynamicResource HoverBrush}"/>
+                                                </Trigger>
+                                                <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                    <Setter TargetName="cb" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                                                    <Setter TargetName="cb" Property="Background" Value="#22DDB44B"/>
+                                                </DataTrigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Button.Template>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
 
                     <!-- Шапка -->
                     <Grid Grid.Row="0" Margin="6,4,6,8">
@@ -1217,22 +1251,9 @@
                     </Grid>
 
                     <!-- Список удалённых -->
-                    <ListBox Grid.Row="1" ItemsSource="{Binding RecoveredView}" Margin="6,0" Background="Transparent"
+                    <ListBox Grid.Row="2" ItemsSource="{Binding RecoveredView}" Margin="6,0" Background="Transparent"
                              BorderThickness="0" HorizontalContentAlignment="Stretch"
-                             VirtualizingPanel.IsVirtualizingWhenGrouping="True"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto">
-                        <ListBox.GroupStyle>
-                            <GroupStyle>
-                                <GroupStyle.HeaderTemplate>
-                                    <DataTemplate>
-                                        <StackPanel Orientation="Horizontal" Margin="6,14,0,4">
-                                            <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="Bold" Foreground="{DynamicResource MutedBrush}"/>
-                                            <TextBlock Text="{Binding ItemCount, StringFormat=' ({0})'}" FontSize="12" Foreground="{DynamicResource MutedBrush}"/>
-                                        </StackPanel>
-                                    </DataTemplate>
-                                </GroupStyle.HeaderTemplate>
-                            </GroupStyle>
-                        </ListBox.GroupStyle>
                         <ListBox.ItemContainerStyle>
                             <Style TargetType="ListBoxItem">
                                 <Setter Property="Padding" Value="0"/>
@@ -1271,7 +1292,7 @@
                     </ListBox>
 
                     <!-- Низ: предупреждение + кнопка -->
-                    <Border Grid.Row="2" Style="{StaticResource Card}" Margin="6,10,6,0" Padding="16,12">
+                    <Border Grid.Row="3" Style="{StaticResource Card}" Margin="6,10,6,0" Padding="16,12">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
