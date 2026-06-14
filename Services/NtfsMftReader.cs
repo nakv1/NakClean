@@ -236,7 +236,7 @@ public static class NtfsMftReader
                 Resident = !raw.nonResident,
                 ResidentData = raw.resident,
                 Runs = raw.runs,
-                Chance = Chance(raw, bitmap, bytesPerCluster),
+                Chance = ChanceChecked(h, raw, bitmap, bytesPerCluster),
             });
         }
         return result;
@@ -546,6 +546,23 @@ public static class NtfsMftReader
             p += len;
         }
         return 0;
+    }
+
+    // Шанс с проверкой реального содержимого: если данные уже обнулены (SSD TRIM) -> -1 «стёрт».
+    private static int ChanceChecked(SafeFileHandle h, DeletedRaw raw, byte[]? bitmap, uint bytesPerCluster)
+    {
+        int c = Chance(raw, bitmap, bytesPerCluster);
+        if (c > 0 && raw.nonResident && raw.runs.Count > 0 && FirstClusterZero(h, raw.runs, bytesPerCluster))
+            return -1;   // место «свободно», но физически забито нулями - файла уже нет
+        return c;
+    }
+
+    private static bool FirstClusterZero(SafeFileHandle h, List<(long lcn, long count)> runs, uint bpc)
+    {
+        var buf = ReadAt(h, runs[0].lcn * bpc, (int)bpc);
+        if (buf.Length == 0) return false;
+        foreach (var b in buf) if (b != 0) return false;
+        return true;
     }
 
     private static int Chance(DeletedRaw raw, byte[]? bitmap, uint bytesPerCluster)

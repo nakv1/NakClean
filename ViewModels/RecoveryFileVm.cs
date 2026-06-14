@@ -39,14 +39,16 @@ public sealed class RecoveryFileVm : ViewModelBase
     {
         2 => Loc.I["rec_high"],
         1 => Loc.I["rec_mid"],
-        _ => Loc.I["rec_low"],
+        0 => Loc.I["rec_low"],
+        _ => Loc.I["rec_wiped"],
     };
 
     public Brush ChanceBrush => File.Chance switch
     {
         2 => Freeze(0x3D, 0xD6, 0x8C),
         1 => Freeze(0xDD, 0xB4, 0x4B),
-        _ => Freeze(0xE5, 0x48, 0x4D),
+        0 => Freeze(0xE5, 0x48, 0x4D),
+        _ => Freeze(0x8A, 0x8A, 0x94),
     };
 
     private static Brush Freeze(byte r, byte g, byte b)
