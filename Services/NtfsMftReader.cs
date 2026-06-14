@@ -233,7 +233,7 @@ public static class NtfsMftReader
                 Resident = !raw.nonResident,
                 ResidentData = raw.resident,
                 Runs = raw.runs,
-                Chance = Chance(raw, bitmap),
+                Chance = Chance(raw, bitmap, bytesPerCluster),
             });
         }
         return result;
@@ -385,9 +385,15 @@ public static class NtfsMftReader
         return 0;
     }
 
-    private static int Chance(DeletedRaw raw, byte[]? bitmap)
+    private static int Chance(DeletedRaw raw, byte[]? bitmap, uint bytesPerCluster)
     {
         if (!raw.nonResident) return 2;          // данные внутри записи MFT - целы
+
+        // карта расположения неполная (большой/фрагментированный файл - часть кусков
+        // описана в доп. записях, которые мы пока не читаем) -> восстановим лишь частично
+        long coveredBytes = raw.runs.Sum(r => r.count) * bytesPerCluster;
+        if (coveredBytes < raw.size) return 0;
+
         if (bitmap == null) return 1;
         long total = 0, alloc = 0;
         foreach (var (lcn, count) in raw.runs)
