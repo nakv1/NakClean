@@ -38,6 +38,21 @@ public partial class MainWindow : Window
         NavStartup.Checked += (_, _) => Vm?.EnsureStartupLoaded();
         NavApps.Checked += (_, _) => Vm?.EnsureAppsLoaded();
         NavDiag.Checked += (_, _) => Vm?.EnsureDiagnosticsLoaded();
+
+        // плавный fade контента при смене вкладки
+        foreach (var nav in new[] { NavDash, NavCheck, NavClean, NavOptimize, NavMaint,
+                                    NavRegistry, NavStartup, NavApps, NavFiles, NavDiag, NavAbout })
+            nav.Checked += (_, _) => FadeContent();
+    }
+
+    private void FadeContent()
+    {
+        var anim = new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(170))
+        {
+            EasingFunction = new System.Windows.Media.Animation.QuadraticEase
+            { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut },
+        };
+        ContentHost.BeginAnimation(OpacityProperty, anim);
     }
 
     private MainViewModel? Vm => DataContext as MainViewModel;

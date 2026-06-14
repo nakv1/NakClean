@@ -207,7 +207,7 @@
             </Grid>
 
             <!-- Контент -->
-            <Grid Grid.Column="1" Margin="6,0,16,16">
+            <Grid x:Name="ContentHost" Grid.Column="1" Margin="6,0,16,16">
 
                 <!-- ===== Страница: Обзор ===== -->
                 <ScrollViewer VerticalScrollBarVisibility="Auto"
@@ -1427,5 +1427,45 @@
                 </Border>
             </Grid>
         </Grid>
+
+        <!-- ===== Тосты-уведомления (правый нижний угол) ===== -->
+        <ItemsControl Grid.Row="1" ItemsSource="{Binding Toasts, Source={x:Static vm:ToastService.I}}"
+                      HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,20,18"
+                      IsHitTestVisible="False" Panel.ZIndex="999">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Border Background="{DynamicResource CardSurface}" CornerRadius="12" Margin="0,7,0,0"
+                            BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1"
+                            Effect="{DynamicResource CardShadow}" MinWidth="240" MaxWidth="380">
+                        <Border.RenderTransform>
+                            <TranslateTransform x:Name="tt" X="0"/>
+                        </Border.RenderTransform>
+                        <Border.Triggers>
+                            <EventTrigger RoutedEvent="Border.Loaded">
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0" To="1" Duration="0:0:0.2"/>
+                                        <DoubleAnimation Storyboard.TargetName="tt" Storyboard.TargetProperty="X" From="40" To="0" Duration="0:0:0.22"/>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </EventTrigger>
+                        </Border.Triggers>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Width="28" Height="28" CornerRadius="9" Margin="12,12,0,12"
+                                    Background="{Binding Soft}" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Glyph}" Foreground="{Binding Accent}" FontWeight="Bold"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <TextBlock Grid.Column="1" Text="{Binding Message}" Margin="12,12,16,12"
+                                       VerticalAlignment="Center" TextWrapping="Wrap" FontSize="13"/>
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
     </Grid>
 </Window>

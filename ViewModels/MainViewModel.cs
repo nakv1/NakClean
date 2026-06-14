@@ -469,8 +469,13 @@ public sealed class MainViewModel : ViewModelBase
             System.IO.File.WriteAllText(file, sb.ToString(), System.Text.Encoding.UTF8);
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(file) { UseShellExecute = true });
             ReportNote = string.Format(Loc.I["rep_saved"], file);
+            ToastService.Ok(string.Format(Loc.I["rep_saved"], file));
         }
-        catch (Exception ex) { ReportNote = string.Format(Loc.I["err"], ex.Message); }
+        catch (Exception ex)
+        {
+            ReportNote = string.Format(Loc.I["err"], ex.Message);
+            ToastService.Error(string.Format(Loc.I["err"], ex.Message));
+        }
 
         static void Row(System.Text.StringBuilder sb, string? k, string? v)
             => sb.Append($"<tr><td class='k'>{System.Net.WebUtility.HtmlEncode(k ?? "")}</td><td class='b'>{System.Net.WebUtility.HtmlEncode(v ?? "")}</td></tr>");
@@ -1657,6 +1662,7 @@ public sealed class MainViewModel : ViewModelBase
         catch (Exception ex)
         {
             Status = string.Format(Loc.I["cl_clean_err"], ex.Message);
+            ToastService.Error(string.Format(Loc.I["cl_clean_err"], ex.Message));
         }
         finally
         {
@@ -1668,6 +1674,7 @@ public sealed class MainViewModel : ViewModelBase
                 _sessionFreed += freedTotal;
                 OnPropertyChanged(nameof(HasSessionFreed));
                 OnPropertyChanged(nameof(SessionFreedLine));
+                ToastService.Ok(string.Format(Loc.I["cl_done"], Format.Bytes(freedTotal)));
             }
         }
     }
