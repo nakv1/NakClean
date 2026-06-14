@@ -83,6 +83,8 @@ public sealed class MainViewModel : ViewModelBase
     public RelayCommand RefreshBatteryCommand { get; }
     public RelayCommand RefreshBootCommand { get; }
     public RelayCommand ExportReportCommand { get; }
+    public RelayCommand CheckUpdatesCommand { get; }
+    public RelayCommand OpenReleaseCommand { get; }
 
     public MainViewModel()
     {
@@ -149,6 +151,8 @@ public sealed class MainViewModel : ViewModelBase
         RefreshBatteryCommand = new RelayCommand(async () => await LoadBatteryAsync());
         RefreshBootCommand = new RelayCommand(async () => await LoadBootAsync());
         ExportReportCommand = new RelayCommand(ExportReport);
+        CheckUpdatesCommand = new RelayCommand(async () => await CheckUpdatesAsync(true));
+        OpenReleaseCommand = new RelayCommand(OpenRelease);
 
         foreach (var t in OptimizationService.BuildTweaks())
             Tweaks.Add(new OptTweakVm(t));
@@ -168,6 +172,7 @@ public sealed class MainViewModel : ViewModelBase
         // Остальные вкладки - лениво при первом открытии (см. Ensure*), чтобы старт был быстрым.
         RefreshDisks();
         _ = LoadSystemInfoAsync();
+        _ = CheckUpdatesAsync(false);   // тихая проверка обновлений в фоне
         Loc.I.PropertyChanged += (_, _) => OnLanguageChanged();
         Native.GetCpuUsage(); // первый замер-«нулёвка» для CPU
 
@@ -487,6 +492,48 @@ public sealed class MainViewModel : ViewModelBase
     public string AppVersionText => string.Format(Loc.I["about_version_fmt"], Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.0");
     public string AppVersionShort => "v" + (Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.0");
     public string AppAuthor => Loc.I["about_author"];
+
+    // ---------- Проверка обновлений ----------
+    private string _updateNote = "";
+    public string UpdateNote { get => _updateNote; private set => Set(ref _updateNote, value); }
+
+    private bool _hasUpdate;
+    public bool HasUpdate { get => _hasUpdate; private set => Set(ref _hasUpdate, value); }
+
+    private string _releaseUrl = "";
+    private bool _updChecking;
+
+    private async Task CheckUpdatesAsync(bool manual)
+    {
+        if (_updChecking) return;
+        _updChecking = true;
+        if (manual) UpdateNote = Loc.I["upd_checking"];
+        try
+        {
+            var info = await UpdateService.CheckAsync();
+            if (!info.Checked) { if (manual) UpdateNote = Loc.I["upd_fail"]; return; }
+
+            if (info.Available)
+            {
+                HasUpdate = true;
+                _releaseUrl = info.Url;
+                UpdateNote = string.Format(Loc.I["upd_available"], info.LatestVersion);
+                ToastService.Info(string.Format(Loc.I["upd_available"], info.LatestVersion));
+            }
+            else
+            {
+                HasUpdate = false;
+                if (manual) UpdateNote = Loc.I["upd_latest"];
+            }
+        }
+        finally { _updChecking = false; }
+    }
+
+    private void OpenRelease()
+    {
+        if (string.IsNullOrEmpty(_releaseUrl)) return;
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(_releaseUrl) { UseShellExecute = true }); } catch { }
+    }
 
     // ---------- Живая статистика ----------
     private double _cpuPercent;

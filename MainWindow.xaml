@@ -1411,6 +1411,15 @@
                                 </StackPanel>
                             </Button>
 
+                            <!-- Обновления -->
+                            <Button Content="{Binding [upd_check], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}"
+                                    Margin="0,10,0,0" HorizontalAlignment="Center" Command="{Binding CheckUpdatesCommand}"/>
+                            <TextBlock Text="{Binding UpdateNote}" FontSize="12" Foreground="{DynamicResource MutedBrush}"
+                                       HorizontalAlignment="Center" TextAlignment="Center" Margin="0,8,0,0" TextWrapping="Wrap"/>
+                            <Button Content="{Binding [upd_download], Source={x:Static loc:Loc.I}}" Style="{StaticResource AccentButton}"
+                                    Margin="0,10,0,0" HorizontalAlignment="Center" Command="{Binding OpenReleaseCommand}"
+                                    Visibility="{Binding HasUpdate, Converter={StaticResource BoolVis}}"/>
+
                             <TextBlock Text="© 2026 nak (github.com/nakv1) · Все права защищены" FontSize="11"
                                        Foreground="{DynamicResource MutedBrush}" HorizontalAlignment="Center"
                                        Margin="0,22,0,0"/>
