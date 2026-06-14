@@ -157,6 +157,8 @@ public sealed class MainViewModel : ViewModelBase
         OpenReleaseCommand = new RelayCommand(OpenRelease);
         ScanDeletedCommand = new RelayCommand(async () => await ScanDeletedAsync(), () => !RecoveryBusy);
         RecoverSelectedCommand = new RelayCommand(async () => await RecoverSelectedAsync(), () => !RecoveryBusy);
+        RecoveredView = CollectionViewSource.GetDefaultView(Recovered);
+        RecoveredView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(RecoveryFileVm.Category)));
         BuildRecoveryDrives();
 
         foreach (var t in OptimizationService.BuildTweaks())
@@ -542,6 +544,7 @@ public sealed class MainViewModel : ViewModelBase
 
     // ---------- Восстановление удалённых файлов ----------
     public ObservableCollection<RecoveryFileVm> Recovered { get; } = new();
+    public ICollectionView RecoveredView { get; }
     public ObservableCollection<string> RecoveryDrives { get; } = new();
 
     private string? _selectedRecoveryDrive;

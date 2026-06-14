@@ -1209,16 +1209,29 @@
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
                             <ComboBox ItemsSource="{Binding RecoveryDrives}" SelectedItem="{Binding SelectedRecoveryDrive}"
-                                      Width="80" Height="38" VerticalContentAlignment="Center" Margin="0,0,8,0"/>
+                                      Style="{StaticResource DarkCombo}" Width="84" Height="38" Margin="0,0,8,0"/>
                             <Button Content="{Binding [rec_scan], Source={x:Static loc:Loc.I}}" Style="{StaticResource AccentButton}"
                                     Command="{Binding ScanDeletedCommand}" IsEnabled="{Binding RecoveryIdle}"/>
                         </StackPanel>
                     </Grid>
 
                     <!-- Список удалённых -->
-                    <ListBox Grid.Row="1" ItemsSource="{Binding Recovered}" Margin="6,0" Background="Transparent"
+                    <ListBox Grid.Row="1" ItemsSource="{Binding RecoveredView}" Margin="6,0" Background="Transparent"
                              BorderThickness="0" HorizontalContentAlignment="Stretch"
+                             VirtualizingPanel.IsVirtualizingWhenGrouping="True"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto">
+                        <ListBox.GroupStyle>
+                            <GroupStyle>
+                                <GroupStyle.HeaderTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" Margin="6,14,0,4">
+                                            <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="Bold" Foreground="{DynamicResource MutedBrush}"/>
+                                            <TextBlock Text="{Binding ItemCount, StringFormat=' ({0})'}" FontSize="12" Foreground="{DynamicResource MutedBrush}"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </GroupStyle.HeaderTemplate>
+                            </GroupStyle>
+                        </ListBox.GroupStyle>
                         <ListBox.ItemContainerStyle>
                             <Style TargetType="ListBoxItem">
                                 <Setter Property="Padding" Value="0"/>

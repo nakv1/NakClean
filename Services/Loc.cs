@@ -59,6 +59,9 @@ public sealed class Loc : INotifyPropertyChanged
         ["rec_samedrive"] = "Нельзя восстанавливать на тот же диск - выбери другой",
         ["rec_hint"] = "⚠ Восстанавливай на ДРУГОЙ диск - иначе данные можно затереть.",
         ["rec_high"] = "высокий", ["rec_mid"] = "средний", ["rec_low"] = "низкий",
+        ["rcat_img"] = "🖼 Фото и картинки", ["rcat_video"] = "🎬 Видео", ["rcat_audio"] = "🎵 Музыка",
+        ["rcat_doc"] = "📄 Документы", ["rcat_archive"] = "🗜 Архивы", ["rcat_prog"] = "⚙ Программы и библиотеки",
+        ["rcat_other"] = "📦 Прочее",
         ["header_subtitle"] = "очистка и оптимизация",
         // диагностика — батарея
         ["hdr_diag"] = "Диагностика",
@@ -475,6 +478,9 @@ public sealed class Loc : INotifyPropertyChanged
         ["rec_samedrive"] = "Can't recover to the same drive - choose another",
         ["rec_hint"] = "⚠ Recover to ANOTHER drive - otherwise data may be overwritten.",
         ["rec_high"] = "high", ["rec_mid"] = "medium", ["rec_low"] = "low",
+        ["rcat_img"] = "🖼 Photos & images", ["rcat_video"] = "🎬 Video", ["rcat_audio"] = "🎵 Music",
+        ["rcat_doc"] = "📄 Documents", ["rcat_archive"] = "🗜 Archives", ["rcat_prog"] = "⚙ Programs & libraries",
+        ["rcat_other"] = "📦 Other",
         ["header_subtitle"] = "cleanup & optimization",
         // diagnostics — battery
         ["hdr_diag"] = "Diagnostics",
