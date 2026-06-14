@@ -192,7 +192,10 @@ public static class NtfsMftReader
                     if (info.name != null) names[index] = (info.name, info.parent);
                     if (!info.inUse && !info.isDir && info.name != null && info.size > 0)
                     {
-                        var runs = info.nonResident ? GetMftDataRuns(buf, o, (int)recSize) : new List<(long, long)>();
+                        // собираем ВСЕ куски: из основной записи + из доп. записей ($ATTRIBUTE_LIST)
+                        var runs = info.nonResident
+                            ? GatherDataRuns(h, buf, o, (int)recSize, (int)bytesPerSector, mftRuns, bytesPerCluster, index)
+                            : new List<(long, long)>();
                         if (info.nonResident && runs.Count == 0) continue;
                         found.Add((index, new DeletedRaw(info.name, info.parent, info.size, info.nonResident, info.resident, runs)));
                     }
@@ -334,6 +337,166 @@ public static class NtfsMftReader
             p += len;
         }
         return (name, parent, size, isDir, inUse, nonRes, resident);
+    }
+
+    // Собирает ПОЛНУЮ карту кусков файла: $DATA из основной записи + куски из доп. записей,
+    // на которые ссылается $ATTRIBUTE_LIST (так лежат большие/фрагментированные файлы).
+    private static List<(long lcn, long count)> GatherDataRuns(
+        SafeFileHandle h, byte[] baseRec, int o, int recSize, int sector,
+        List<(long, long)> mftRuns, uint bpc, long baseIndex)
+    {
+        var frags = new List<(long vcn, List<(long, long)> runs)>();
+
+        var baseRuns = GetMftDataRuns(baseRec, o, recSize);
+        if (baseRuns.Count > 0) frags.Add((DataStartVcn(baseRec, o, recSize), baseRuns));
+
+        var list = ReadAttributeList(h, baseRec, o, recSize, bpc);
+        if (list != null)
+        {
+            int q = 0;
+            var seen = new HashSet<long>();
+            while (q + 0x1A <= list.Length)
+            {
+                uint type = U32(list, q);
+                int entLen = U16(list, q + 4);
+                if (entLen < 0x18 || q + entLen > list.Length) break;
+                byte nameLen = list[q + 6];
+                if (type == 0x80 && nameLen == 0)
+                {
+                    long refIdx = I64(list, q + 0x10) & 0x0000FFFFFFFFFFFF;
+                    if (refIdx != baseIndex && seen.Add(refIdx))
+                    {
+                        var ext = ReadMftRecord(h, mftRuns, bpc, (uint)recSize, (uint)sector, refIdx);
+                        if (ext != null)
+                        {
+                            var r = GetMftDataRuns(ext, 0, recSize);
+                            if (r.Count > 0) frags.Add((DataStartVcn(ext, 0, recSize), r));
+                        }
+                    }
+                }
+                q += entLen;
+            }
+        }
+
+        var all = new List<(long, long)>();
+        foreach (var f in frags.OrderBy(f => f.vcn))
+            all.AddRange(f.runs);
+        return all;
+    }
+
+    // StartingVCN безымянного нерезидентного $DATA
+    private static long DataStartVcn(byte[] b, int o, int recSize)
+    {
+        int p = o + U16(b, o + 20);
+        while (p + 8 <= o + recSize)
+        {
+            uint type = U32(b, p);
+            if (type == 0xFFFFFFFF) break;
+            int len = (int)U32(b, p + 4);
+            if (len <= 0) break;
+            if (type == 0x80 && b[p + 9] == 0 && b[p + 8] == 1) return I64(b, p + 16);
+            p += len;
+        }
+        return 0;
+    }
+
+    // Содержимое $ATTRIBUTE_LIST (тип 0x20): резидентное прямо из записи, иначе - читаем его куски.
+    private static byte[]? ReadAttributeList(SafeFileHandle h, byte[] b, int o, int recSize, uint bpc)
+    {
+        int p = o + U16(b, o + 20);
+        while (p + 8 <= o + recSize)
+        {
+            uint type = U32(b, p);
+            if (type == 0xFFFFFFFF) break;
+            int len = (int)U32(b, p + 4);
+            if (len <= 0 || p + len > o + recSize) break;
+            if (type == 0x20)
+            {
+                byte nr = b[p + 8];
+                if (nr == 0)
+                {
+                    int vlen = (int)U32(b, p + 16);
+                    int voff = U16(b, p + 20);
+                    if (vlen > 0 && p + voff + vlen <= o + recSize)
+                    {
+                        var v = new byte[vlen];
+                        Array.Copy(b, p + voff, v, 0, vlen);
+                        return v;
+                    }
+                    return null;
+                }
+                // нерезидентный список - читаем его кластеры
+                long real = I64(b, p + 48);
+                if (real <= 0 || real > 32 * 1024 * 1024) return null;
+                var runs = ParseRuns(b, p, o + recSize);
+                if (runs.Count == 0) return null;
+                var buf = new byte[real];
+                long written = 0;
+                foreach (var (lcn, count) in runs)
+                {
+                    long bytes = count * bpc, pos = lcn * bpc;
+                    while (bytes > 0 && written < real)
+                    {
+                        int toRead = (int)Math.Min(4 * 1024 * 1024, bytes);
+                        var chunk = ReadAt(h, pos, toRead);
+                        if (chunk.Length == 0) return buf;
+                        int copy = (int)Math.Min(chunk.Length, real - written);
+                        Array.Copy(chunk, 0, buf, written, copy);
+                        written += copy; pos += chunk.Length; bytes -= chunk.Length;
+                    }
+                }
+                return buf;
+            }
+            p += len;
+        }
+        return null;
+    }
+
+    // Куски (data runs) нерезидентного атрибута, на который указывает p.
+    private static List<(long lcn, long count)> ParseRuns(byte[] b, int p, int end)
+    {
+        var runs = new List<(long, long)>();
+        int q = p + U16(b, p + 32);
+        long lcn = 0;
+        while (q < end && b[q] != 0)
+        {
+            byte hdr = b[q++];
+            int lenSize = hdr & 0xF;
+            int offSize = (hdr >> 4) & 0xF;
+            if (q + lenSize + offSize > end) break;
+            long runLen = ReadLE(b, q, lenSize); q += lenSize;
+            long runOff = ReadLESigned(b, q, offSize); q += offSize;
+            lcn += runOff;
+            if (runLen > 0) runs.Add((lcn, runLen));
+        }
+        return runs;
+    }
+
+    // Читает запись MFT по индексу (MFT сама фрагментирована - идём по её runs).
+    private static byte[]? ReadMftRecord(SafeFileHandle h, List<(long, long)> mftRuns, uint bpc, uint recSize, uint sector, long index)
+    {
+        long target = index * recSize;
+        long acc = 0;
+        foreach (var (lcn, count) in mftRuns)
+        {
+            long runBytes = count * bpc;
+            if (target < acc + runBytes)
+            {
+                long physical = lcn * bpc + (target - acc);
+                long alignedStart = physical / bpc * bpc;
+                int off = (int)(physical - alignedStart);
+                int need = (int)(((off + recSize) + bpc - 1) / bpc * bpc);
+                var chunk = ReadAt(h, alignedStart, need);
+                if (chunk.Length < off + recSize) return null;
+                if (chunk[off] != (byte)'F' || chunk[off + 1] != (byte)'I' || chunk[off + 2] != (byte)'L' || chunk[off + 3] != (byte)'E') return null;
+                var rec = new byte[recSize];
+                Array.Copy(chunk, off, rec, 0, (int)recSize);
+                ApplyFixup(rec, 0, (int)recSize, (int)sector);
+                return rec;
+            }
+            acc += runBytes;
+        }
+        return null;
     }
 
     // карта занятых кластеров тома ($Bitmap = запись MFT №6)
