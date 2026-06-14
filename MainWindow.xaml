@@ -179,6 +179,12 @@
                         <TextBlock Text="{Binding [nav_files], Source={x:Static loc:Loc.I}}" Margin="12,0,0,0" VerticalAlignment="Center"/>
                     </StackPanel>
                 </RadioButton>
+                <RadioButton x:Name="NavRecovery" Style="{StaticResource NavButton}" GroupName="nav">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="♻" FontSize="16"/>
+                        <TextBlock Text="{Binding [nav_recovery], Source={x:Static loc:Loc.I}}" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </RadioButton>
                 <RadioButton x:Name="NavDiag" Style="{StaticResource NavButton}" GroupName="nav">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="🔬" FontSize="16"/>
@@ -1185,6 +1191,86 @@
                             </Grid>
                         </Border>
                     </Grid>
+                </Grid>
+
+                <!-- ===== Страница: Восстановление удалённых файлов ===== -->
+                <Grid Visibility="{Binding IsChecked, ElementName=NavRecovery, Converter={StaticResource BoolVis}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Шапка -->
+                    <Grid Grid.Row="0" Margin="6,4,6,8">
+                        <StackPanel>
+                            <TextBlock Text="{Binding [nav_recovery], Source={x:Static loc:Loc.I}}" FontSize="22" FontWeight="Bold"/>
+                            <TextBlock Text="{Binding RecoveryNote}" Foreground="{DynamicResource MutedBrush}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
+                            <ComboBox ItemsSource="{Binding RecoveryDrives}" SelectedItem="{Binding SelectedRecoveryDrive}"
+                                      Width="80" Height="38" VerticalContentAlignment="Center" Margin="0,0,8,0"/>
+                            <Button Content="{Binding [rec_scan], Source={x:Static loc:Loc.I}}" Style="{StaticResource AccentButton}"
+                                    Command="{Binding ScanDeletedCommand}" IsEnabled="{Binding RecoveryIdle}"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- Список удалённых -->
+                    <ListBox Grid.Row="1" ItemsSource="{Binding Recovered}" Margin="6,0" Background="Transparent"
+                             BorderThickness="0" HorizontalContentAlignment="Stretch"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Padding" Value="0"/>
+                                <Setter Property="Margin" Value="0"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem"><ContentPresenter/></ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border Style="{StaticResource Card}" Margin="0,3" Padding="12,9">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <CheckBox Grid.Column="0" IsChecked="{Binding Selected}" VerticalAlignment="Center"/>
+                                        <StackPanel Grid.Column="1" Margin="12,0" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding Path}" FontSize="11" Foreground="{DynamicResource MutedBrush}" TextTrimming="CharacterEllipsis" Margin="0,1,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="2" Text="{Binding SizeText}" FontSize="12" VerticalAlignment="Center" Margin="10,0"/>
+                                        <Border Grid.Column="3" CornerRadius="9" Padding="9,2" VerticalAlignment="Center"
+                                                BorderBrush="{Binding ChanceBrush}" BorderThickness="1">
+                                            <TextBlock Text="{Binding ChanceText}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding ChanceBrush}"/>
+                                        </Border>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <!-- Низ: предупреждение + кнопка -->
+                    <Border Grid.Row="2" Style="{StaticResource Card}" Margin="6,10,6,0" Padding="16,12">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="{Binding [rec_hint], Source={x:Static loc:Loc.I}}"
+                                       Foreground="{DynamicResource MutedBrush}" FontSize="12" VerticalAlignment="Center"
+                                       TextWrapping="Wrap" Margin="0,0,12,0"/>
+                            <Button Grid.Column="1" Content="{Binding [rec_recover], Source={x:Static loc:Loc.I}}"
+                                    Style="{StaticResource AccentButton}" Padding="22,12"
+                                    Command="{Binding RecoverSelectedCommand}" IsEnabled="{Binding RecoveryIdle}"/>
+                        </Grid>
+                    </Border>
                 </Grid>
 
                 <!-- ===== Страница: Диагностика (диски + батарея + загрузка) ===== -->

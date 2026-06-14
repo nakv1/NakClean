@@ -85,6 +85,8 @@ public sealed class MainViewModel : ViewModelBase
     public RelayCommand ExportReportCommand { get; }
     public RelayCommand CheckUpdatesCommand { get; }
     public RelayCommand OpenReleaseCommand { get; }
+    public RelayCommand ScanDeletedCommand { get; }
+    public RelayCommand RecoverSelectedCommand { get; }
 
     public MainViewModel()
     {
@@ -153,6 +155,9 @@ public sealed class MainViewModel : ViewModelBase
         ExportReportCommand = new RelayCommand(ExportReport);
         CheckUpdatesCommand = new RelayCommand(async () => await CheckUpdatesAsync(true));
         OpenReleaseCommand = new RelayCommand(OpenRelease);
+        ScanDeletedCommand = new RelayCommand(async () => await ScanDeletedAsync(), () => !RecoveryBusy);
+        RecoverSelectedCommand = new RelayCommand(async () => await RecoverSelectedAsync(), () => !RecoveryBusy);
+        BuildRecoveryDrives();
 
         foreach (var t in OptimizationService.BuildTweaks())
             Tweaks.Add(new OptTweakVm(t));
@@ -533,6 +538,117 @@ public sealed class MainViewModel : ViewModelBase
     {
         if (string.IsNullOrEmpty(_releaseUrl)) return;
         try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(_releaseUrl) { UseShellExecute = true }); } catch { }
+    }
+
+    // ---------- Восстановление удалённых файлов ----------
+    public ObservableCollection<RecoveryFileVm> Recovered { get; } = new();
+    public ObservableCollection<string> RecoveryDrives { get; } = new();
+
+    private string? _selectedRecoveryDrive;
+    public string? SelectedRecoveryDrive { get => _selectedRecoveryDrive; set => Set(ref _selectedRecoveryDrive, value); }
+
+    private bool _recoveryBusy;
+    public bool RecoveryBusy
+    {
+        get => _recoveryBusy;
+        private set
+        {
+            if (!Set(ref _recoveryBusy, value)) return;
+            OnPropertyChanged(nameof(RecoveryIdle));
+            ScanDeletedCommand.RaiseCanExecuteChanged();
+            RecoverSelectedCommand.RaiseCanExecuteChanged();
+        }
+    }
+    public bool RecoveryIdle => !RecoveryBusy;
+
+    private string _recoveryNote = Loc.I["rec_note"];
+    public string RecoveryNote { get => _recoveryNote; private set => Set(ref _recoveryNote, value); }
+
+    private void BuildRecoveryDrives()
+    {
+        RecoveryDrives.Clear();
+        foreach (var d in System.IO.DriveInfo.GetDrives())
+        {
+            try
+            {
+                if (d.IsReady && d.DriveType == System.IO.DriveType.Fixed &&
+                    d.DriveFormat.Equals("NTFS", StringComparison.OrdinalIgnoreCase))
+                    RecoveryDrives.Add(d.Name.TrimEnd('\\'));   // "C:"
+            }
+            catch { }
+        }
+        SelectedRecoveryDrive = RecoveryDrives.FirstOrDefault();
+    }
+
+    private async Task ScanDeletedAsync()
+    {
+        var drv = SelectedRecoveryDrive;
+        if (string.IsNullOrEmpty(drv)) return;
+        char letter = drv[0];
+
+        RecoveryBusy = true;
+        RecoveryNote = Loc.I["rec_scanning"];
+        Recovered.Clear();
+        try
+        {
+            var list = await Task.Run(() => NtfsMftReader.EnumerateDeleted(letter, CancellationToken.None));
+            foreach (var f in list.OrderByDescending(x => x.Chance).ThenByDescending(x => x.Size).Take(5000))
+                Recovered.Add(new RecoveryFileVm(f));
+            RecoveryNote = Recovered.Count == 0
+                ? Loc.I["rec_empty"]
+                : string.Format(Loc.I["rec_found"], Recovered.Count);
+        }
+        catch (Exception ex) { RecoveryNote = string.Format(Loc.I["err"], ex.Message); }
+        finally { RecoveryBusy = false; }
+    }
+
+    private async Task RecoverSelectedAsync()
+    {
+        var sel = Recovered.Where(r => r.Selected).ToList();
+        if (sel.Count == 0) { RecoveryNote = Loc.I["rec_nosel"]; return; }
+
+        var dlg = new Microsoft.Win32.OpenFolderDialog { Title = Loc.I["rec_pickdest"] };
+        if (dlg.ShowDialog() != true) return;
+        string dest = dlg.FolderName;
+
+        // нельзя восстанавливать на тот же диск - можно затереть данные
+        char src = sel[0].File.Drive;
+        string? destRoot = System.IO.Path.GetPathRoot(dest)?.TrimEnd('\\');
+        if (destRoot != null && destRoot.StartsWith(src.ToString(), StringComparison.OrdinalIgnoreCase))
+        {
+            RecoveryNote = Loc.I["rec_samedrive"];
+            ToastService.Warn(Loc.I["rec_samedrive"]);
+            return;
+        }
+
+        RecoveryBusy = true;
+        RecoveryNote = Loc.I["rec_recovering"];
+        int ok = 0, fail = 0;
+        await Task.Run(() =>
+        {
+            foreach (var r in sel)
+            {
+                string target = UniquePath(dest, r.File.Name);
+                if (NtfsMftReader.Recover(r.File, target)) ok++; else fail++;
+            }
+        });
+        RecoveryBusy = false;
+        RecoveryNote = string.Format(Loc.I["rec_done"], ok, fail);
+        ToastService.Ok(string.Format(Loc.I["rec_done"], ok, fail));
+    }
+
+    private static string UniquePath(string dir, string name)
+    {
+        foreach (var c in System.IO.Path.GetInvalidFileNameChars())
+            name = name.Replace(c, '_');
+        if (string.IsNullOrWhiteSpace(name)) name = "recovered";
+        string stem = System.IO.Path.GetFileNameWithoutExtension(name);
+        string ext = System.IO.Path.GetExtension(name);
+        string path = System.IO.Path.Combine(dir, name);
+        int i = 1;
+        while (System.IO.File.Exists(path))
+            path = System.IO.Path.Combine(dir, $"{stem} ({i++}){ext}");
+        return path;
     }
 
     // ---------- Живая статистика ----------

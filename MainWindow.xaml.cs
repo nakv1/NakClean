@@ -41,7 +41,7 @@ public partial class MainWindow : Window
 
         // плавный fade контента при смене вкладки
         foreach (var nav in new[] { NavDash, NavCheck, NavClean, NavOptimize, NavMaint,
-                                    NavRegistry, NavStartup, NavApps, NavFiles, NavDiag, NavAbout })
+                                    NavRegistry, NavStartup, NavApps, NavFiles, NavRecovery, NavDiag, NavAbout })
             nav.Checked += (_, _) => FadeContent();
     }
 

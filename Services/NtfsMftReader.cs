@@ -5,6 +5,20 @@ using Microsoft.Win32.SafeHandles;
 
 namespace NakClean.Services;
 
+/// <summary>Удалённый файл - кандидат на восстановление.</summary>
+public sealed class DeletedFile
+{
+    public required string Name { get; init; }
+    public required string Path { get; init; }
+    public long Size { get; init; }
+    public char Drive { get; init; }
+    public uint BytesPerCluster { get; init; }
+    public bool Resident { get; init; }
+    public byte[]? ResidentData { get; init; }
+    public List<(long lcn, long count)> Runs { get; init; } = new();
+    public int Chance { get; init; }   // 0 = низкий, 1 = средний, 2 = высокий
+}
+
 /// <summary>
 /// Быстрый перебор файлов тома через прямое чтение MFT (главной таблицы файлов NTFS) -
 /// та же техника, что делает сканеры вроде WizTree быстрыми (секунды вместо минут).
@@ -117,6 +131,281 @@ public static class NtfsMftReader
             files.Add((folder + "\\" + r.Name, r.Size));
         }
         return files;
+    }
+
+    // ===================== ВОССТАНОВЛЕНИЕ УДАЛЁННЫХ ФАЙЛОВ =====================
+
+    private readonly record struct DeletedRaw(
+        string name, long parent, long size, bool nonResident, byte[]? resident, List<(long lcn, long count)> runs);
+
+    /// <summary>Находит удалённые файлы тома (запись MFT ещё на месте) с оценкой шанса восстановления.</summary>
+    public static List<DeletedFile> EnumerateDeleted(char drive, CancellationToken ct)
+    {
+        var result = new List<DeletedFile>();
+        using var h = CreateFile($@"\\.\{drive}:", GENERIC_READ, FILE_SHARE_RW, IntPtr.Zero, OPEN_EXISTING, 0, IntPtr.Zero);
+        if (h.IsInvalid) return result;
+
+        var vd = new byte[128];
+        if (!DeviceIoControl(h, FSCTL_GET_NTFS_VOLUME_DATA, IntPtr.Zero, 0, vd, (uint)vd.Length, out _, IntPtr.Zero))
+            return result;
+
+        uint bytesPerSector = BitConverter.ToUInt32(vd, 40);
+        uint bytesPerCluster = BitConverter.ToUInt32(vd, 44);
+        uint recSize = BitConverter.ToUInt32(vd, 48);
+        long mftValidLen = BitConverter.ToInt64(vd, 56);
+        long mftStartLcn = BitConverter.ToInt64(vd, 64);
+        if (bytesPerCluster == 0 || recSize == 0 || bytesPerSector == 0) return result;
+
+        var rec0 = ReadAt(h, mftStartLcn * bytesPerCluster, AlignUp((int)bytesPerCluster, (int)bytesPerSector));
+        if (rec0.Length < recSize) return result;
+        ApplyFixup(rec0, 0, (int)recSize, (int)bytesPerSector);
+        var mftRuns = GetMftDataRuns(rec0, 0, (int)recSize);
+        if (mftRuns.Count == 0) return result;
+
+        long totalRecords = mftValidLen / recSize;
+        var names = new Dictionary<long, (string? name, long parent)>();
+        var found = new List<(long index, DeletedRaw raw)>();
+        byte[]? rec6 = null;
+
+        long index = 0;
+        const int chunk = 8 * 1024 * 1024;
+        foreach (var (lcn, count) in mftRuns)
+        {
+            if (index >= totalRecords) break;
+            ct.ThrowIfCancellationRequested();
+            long pos = lcn * bytesPerCluster;
+            long remaining = count * bytesPerCluster;
+            while (remaining > 0 && index < totalRecords)
+            {
+                int toRead = (int)Math.Min(chunk, remaining);
+                toRead -= toRead % (int)recSize;
+                if (toRead <= 0) toRead = (int)recSize;
+                var buf = ReadAt(h, pos, toRead);
+                if (buf.Length < recSize) break;
+                for (int o = 0; o + recSize <= buf.Length && index < totalRecords; o += (int)recSize, index++)
+                {
+                    if (buf[o] != (byte)'F' || buf[o + 1] != (byte)'I' || buf[o + 2] != (byte)'L' || buf[o + 3] != (byte)'E') continue;
+                    ApplyFixup(buf, o, (int)recSize, (int)bytesPerSector);
+                    if (index == 6) { rec6 = new byte[recSize]; Array.Copy(buf, o, rec6, 0, (int)recSize); }
+
+                    var info = ParseUndelete(buf, o, (int)recSize);
+                    if (info.name != null) names[index] = (info.name, info.parent);
+                    if (!info.inUse && !info.isDir && info.name != null && info.size > 0)
+                    {
+                        var runs = info.nonResident ? GetMftDataRuns(buf, o, (int)recSize) : new List<(long, long)>();
+                        if (info.nonResident && runs.Count == 0) continue;
+                        found.Add((index, new DeletedRaw(info.name, info.parent, info.size, info.nonResident, info.resident, runs)));
+                    }
+                }
+                pos += toRead;
+                remaining -= toRead;
+            }
+        }
+
+        var cache = new Dictionary<long, string?>();
+        string root = drive + ":";
+        string? PathOf(long idx, int depth)
+        {
+            if (idx == 5) return root;
+            if (depth > 512) return null;
+            if (cache.TryGetValue(idx, out var c)) return c;
+            cache[idx] = null;
+            if (!names.TryGetValue(idx, out var r) || r.name is null) return null;
+            var parent = PathOf(r.parent, depth + 1);
+            var p = parent is null ? null : parent + "\\" + r.name;
+            cache[idx] = p;
+            return p;
+        }
+
+        var bitmap = rec6 != null ? LoadBitmap(h, rec6, (int)recSize, bytesPerCluster) : null;
+
+        foreach (var (idx, raw) in found)
+        {
+            ct.ThrowIfCancellationRequested();
+            string folder = PathOf(raw.parent, 0) ?? "?";
+            result.Add(new DeletedFile
+            {
+                Name = raw.name,
+                Path = folder + "\\" + raw.name,
+                Size = raw.size,
+                Drive = drive,
+                BytesPerCluster = bytesPerCluster,
+                Resident = !raw.nonResident,
+                ResidentData = raw.resident,
+                Runs = raw.runs,
+                Chance = Chance(raw, bitmap),
+            });
+        }
+        return result;
+    }
+
+    /// <summary>Восстанавливает удалённый файл в указанный путь (на ДРУГОМ диске). true при успехе.</summary>
+    public static bool Recover(DeletedFile f, string destPath)
+    {
+        try
+        {
+            if (f.Resident)
+            {
+                File.WriteAllBytes(destPath, f.ResidentData ?? Array.Empty<byte>());
+                return true;
+            }
+
+            using var h = CreateFile($@"\\.\{f.Drive}:", GENERIC_READ, FILE_SHARE_RW, IntPtr.Zero, OPEN_EXISTING, 0, IntPtr.Zero);
+            if (h.IsInvalid) return false;
+
+            using var outFs = new FileStream(destPath, FileMode.Create, FileAccess.Write);
+            long remaining = f.Size;
+            long bpc = f.BytesPerCluster;
+            int chunkClusters = (int)Math.Max(1, 4 * 1024 * 1024 / bpc);
+
+            foreach (var (lcn, count) in f.Runs)
+            {
+                long left = count;
+                long pos = lcn * bpc;
+                while (left > 0 && remaining > 0)
+                {
+                    int n = (int)Math.Min(chunkClusters, left);
+                    var buf = ReadAt(h, pos, (int)(n * bpc));   // кластеры выровнены - чтение тома валидно
+                    if (buf.Length == 0) break;
+                    int write = (int)Math.Min(buf.Length, remaining);
+                    outFs.Write(buf, 0, write);
+                    remaining -= write;
+                    pos += buf.Length;
+                    left -= n;
+                }
+                if (remaining <= 0) break;
+            }
+            return true;
+        }
+        catch { return false; }
+    }
+
+    private static (string? name, long parent, long size, bool isDir, bool inUse, bool nonResident, byte[]? resident)
+        ParseUndelete(byte[] b, int o, int recSize)
+    {
+        ushort flags = U16(b, o + 22);
+        bool inUse = (flags & 1) != 0;
+        bool isDir = (flags & 2) != 0;
+        int p = o + U16(b, o + 20);
+
+        string? name = null; byte bestNs = 255; long parent = 0; long size = 0;
+        bool nonRes = false; byte[]? resident = null;
+
+        while (p + 8 <= o + recSize)
+        {
+            uint type = U32(b, p);
+            if (type == 0xFFFFFFFF) break;
+            int len = (int)U32(b, p + 4);
+            if (len <= 0 || p + len > o + recSize) break;
+            byte nr = b[p + 8];
+            byte nameLen = b[p + 9];
+
+            if (type == 0x30) // $FILE_NAME
+            {
+                int v = p + U16(b, p + 20);
+                if (v + 66 <= o + recSize)
+                {
+                    long par = I64(b, v) & 0x0000FFFFFFFFFFFF;
+                    byte fnLen = b[v + 64];
+                    byte ns = b[v + 65];
+                    if (ns != 2 && v + 66 + fnLen * 2 <= o + recSize)
+                        if (name is null || (bestNs == 0 && (ns == 1 || ns == 3)))
+                        {
+                            name = Encoding.Unicode.GetString(b, v + 66, fnLen * 2);
+                            parent = par; bestNs = ns;
+                        }
+                }
+            }
+            else if (type == 0x80 && nameLen == 0) // безымянный $DATA
+            {
+                if (nr == 0)
+                {
+                    int vlen = (int)U32(b, p + 16);
+                    int voff = U16(b, p + 20);
+                    if (vlen > 0 && p + voff + vlen <= o + recSize)
+                    {
+                        resident = new byte[vlen];
+                        Array.Copy(b, p + voff, resident, 0, vlen);
+                        size = vlen; nonRes = false;
+                    }
+                }
+                else { size = I64(b, p + 48); nonRes = true; }
+            }
+            p += len;
+        }
+        return (name, parent, size, isDir, inUse, nonRes, resident);
+    }
+
+    // карта занятых кластеров тома ($Bitmap = запись MFT №6)
+    private static byte[]? LoadBitmap(SafeFileHandle h, byte[] rec6, int recSize, uint bytesPerCluster)
+    {
+        try
+        {
+            var runs = GetMftDataRuns(rec6, 0, recSize);
+            if (runs.Count == 0) return null;
+            long realSize = DataRealSize(rec6, 0, recSize);
+            if (realSize <= 0) realSize = runs.Sum(r => r.count) * bytesPerCluster;
+            if (realSize > 64L * 1024 * 1024) realSize = 64L * 1024 * 1024;
+
+            var bm = new byte[realSize];
+            long written = 0;
+            foreach (var (lcn, count) in runs)
+            {
+                long bytes = count * bytesPerCluster;
+                long pos = lcn * bytesPerCluster;
+                while (bytes > 0 && written < realSize)
+                {
+                    int toRead = (int)Math.Min(4 * 1024 * 1024, bytes);
+                    var buf = ReadAt(h, pos, toRead);
+                    if (buf.Length == 0) return bm;
+                    int copy = (int)Math.Min(buf.Length, realSize - written);
+                    Array.Copy(buf, 0, bm, written, copy);
+                    written += copy;
+                    pos += buf.Length;
+                    bytes -= buf.Length;
+                }
+            }
+            return bm;
+        }
+        catch { return null; }
+    }
+
+    private static long DataRealSize(byte[] b, int o, int recSize)
+    {
+        int p = o + U16(b, o + 20);
+        while (p + 8 <= o + recSize)
+        {
+            uint type = U32(b, p);
+            if (type == 0xFFFFFFFF) break;
+            int len = (int)U32(b, p + 4);
+            if (len <= 0) break;
+            if (type == 0x80 && b[p + 9] == 0 && b[p + 8] == 1) return I64(b, p + 48);
+            p += len;
+        }
+        return 0;
+    }
+
+    private static int Chance(DeletedRaw raw, byte[]? bitmap)
+    {
+        if (!raw.nonResident) return 2;          // данные внутри записи MFT - целы
+        if (bitmap == null) return 1;
+        long total = 0, alloc = 0;
+        foreach (var (lcn, count) in raw.runs)
+        {
+            for (long i = 0; i < count; i++)
+            {
+                long cl = lcn + i;
+                total++;
+                long bi = cl >> 3;
+                bool a = bi >= bitmap.Length || ((bitmap[bi] >> (int)(cl & 7)) & 1) != 0;
+                if (a) alloc++;
+                if (total >= 4096) goto done;     // выборки достаточно
+            }
+        }
+    done:
+        if (total == 0) return 1;
+        if (alloc == 0) return 2;                 // все кластеры свободны - целые
+        return alloc * 2 < total ? 1 : 0;         // частично/полностью занято - перезаписано
     }
 
     private static void ParseRecord(byte[] b, int o, int recSize, int sector, long index, Dictionary<long, Rec> dict)
