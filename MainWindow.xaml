@@ -213,7 +213,10 @@
             </Grid>
 
             <!-- Контент -->
-            <Grid x:Name="ContentHost" Grid.Column="1" Margin="6,0,16,16">
+            <Grid x:Name="ContentHost" Grid.Column="1" Margin="6,0,16,16" RenderTransformOrigin="0.5,0.5">
+                <Grid.RenderTransform>
+                    <TranslateTransform x:Name="ContentHostMove"/>
+                </Grid.RenderTransform>
 
                 <!-- ===== Страница: Обзор ===== -->
                 <ScrollViewer VerticalScrollBarVisibility="Auto"

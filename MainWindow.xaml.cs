@@ -47,12 +47,16 @@ public partial class MainWindow : Window
 
     private void FadeContent()
     {
-        var anim = new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(170))
-        {
-            EasingFunction = new System.Windows.Media.Animation.QuadraticEase
-            { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut },
-        };
-        ContentHost.BeginAnimation(OpacityProperty, anim);
+        var ease = new System.Windows.Media.Animation.CubicEase
+        { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut };
+
+        var fade = new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(240))
+        { EasingFunction = ease };
+        var slide = new System.Windows.Media.Animation.DoubleAnimation(10, 0, TimeSpan.FromMilliseconds(240))
+        { EasingFunction = ease };
+
+        ContentHost.BeginAnimation(OpacityProperty, fade);
+        ContentHostMove.BeginAnimation(TranslateTransform.YProperty, slide);
     }
 
     private MainViewModel? Vm => DataContext as MainViewModel;
