@@ -61,6 +61,14 @@ public partial class MainWindow : Window
 
     private MainViewModel? Vm => DataContext as MainViewModel;
 
+    private void HintBtn_Click(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        if (vm.HintTarget == "clean") { NavClean.IsChecked = true; return; }
+        vm.SelectHintDrive();
+        NavFiles.IsChecked = true;
+    }
+
     private void UpdateLiveActive()
         => Vm?.SetLiveActive(NavDash.IsChecked == true && WindowState != WindowState.Minimized);
 

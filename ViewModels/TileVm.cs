@@ -14,6 +14,8 @@ public sealed class TileVm : ViewModelBase
         _caption = caption;
     }
 
+    public string Glyph { get; init; } = "";
+
     private string _title;
     public string Title { get => _title; set => Set(ref _title, value); }
 

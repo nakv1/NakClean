@@ -804,6 +804,64 @@ public sealed class MainViewModel : ViewModelBase
         OverviewSummary = $"{osLine}     ·     {Environment.MachineName}     ·     {string.Format(Loc.I["ov_uptime"], uptime)}";
     }
 
+    // ---------- приветствие + подсказка «Обзора» ----------
+    public string UserName { get; } = Environment.UserName;
+
+    private string _greeting = "";
+    public string Greeting { get => _greeting; private set => Set(ref _greeting, value); }
+
+    private void UpdateGreeting()
+    {
+        int h = DateTime.Now.Hour;
+        Greeting = Loc.I[h is >= 5 and < 12 ? "greet_morning" : h is >= 12 and < 18 ? "greet_day"
+                       : h is >= 18 and < 23 ? "greet_evening" : "greet_night"];
+    }
+
+    private bool _hasHint;
+    public bool HasHint { get => _hasHint; private set => Set(ref _hasHint, value); }
+    private string _hintText = "";
+    public string HintText { get => _hintText; private set => Set(ref _hintText, value); }
+    private string _hintButton = "";
+    public string HintButton { get => _hintButton; private set => Set(ref _hintButton, value); }
+
+    /// <summary>Куда ведёт кнопка подсказки: "clean" (системный диск) или "files" (остальные).</summary>
+    public string HintTarget { get; private set; } = "";
+    private string _hintDrive = "";
+
+    // подсказка появляется только когда есть реальный повод: диск заполнен на 90% и больше
+    private void UpdateHint()
+    {
+        var full = Disks.Where(d => d.Percent >= 90).ToList();
+        if (full.Count == 0) { HasHint = false; return; }
+
+        string sys = (System.IO.Path.GetPathRoot(Environment.SystemDirectory) ?? "C:\\").TrimEnd('\\');
+        var sysDisk = full.FirstOrDefault(d => d.Name.TrimEnd('\\').Equals(sys, StringComparison.OrdinalIgnoreCase));
+
+        if (sysDisk != null)
+        {
+            HintTarget = "clean";
+            HintText = string.Format(Loc.I["hint_sys"], sysDisk.Name.TrimEnd('\\'), (int)sysDisk.Percent);
+            HintButton = Loc.I["hint_go_clean"];
+        }
+        else
+        {
+            HintTarget = "files";
+            _hintDrive = full[0].Name.TrimEnd('\\');
+            HintText = full.Count == 1
+                ? string.Format(Loc.I["hint_disk"], _hintDrive, (int)full[0].Percent)
+                : string.Format(Loc.I["hint_disks"], string.Join(", ", full.Select(d => d.Name.TrimEnd('\\'))));
+            HintButton = Loc.I["hint_go_files"];
+        }
+        HasHint = true;
+    }
+
+    /// <summary>Выбрать в «Поиске файлов» диск из подсказки.</summary>
+    public void SelectHintDrive()
+    {
+        var d = Drives.FirstOrDefault(x => x.Path.StartsWith(_hintDrive, StringComparison.OrdinalIgnoreCase));
+        if (d != null) SelectedDrive = d;
+    }
+
     private void UpdateLiveStats()
     {
         var (total, used, ramPct) = Native.GetMemory();
@@ -846,16 +904,17 @@ public sealed class MainViewModel : ViewModelBase
         Tiles.Clear();
 
         Tiles.Add(new TileVm("", "")
-        { Refresh = t => { t.Title = Loc.I["tile_cpu"]; t.Caption = Loc.I["cap_load"]; t.Percent = CpuPercent; t.Line1 = CpuName; t.Line2 = CpuSpec; } });
+        { Glyph = "⚙", Refresh = t => { t.Title = Loc.I["tile_cpu"]; t.Caption = Loc.I["cap_load"]; t.Percent = CpuPercent; t.Line1 = CpuName; t.Line2 = CpuSpec; } });
 
         Tiles.Add(new TileVm("", "")
-        { Refresh = t => { t.Title = Loc.I["tile_ram"]; t.Caption = Loc.I["cap_used"]; t.Percent = RamPercent; t.Line1 = RamDetail; t.Line2 = RamSpec; } });
+        { Glyph = "🧠", Refresh = t => { t.Title = Loc.I["tile_ram"]; t.Caption = Loc.I["cap_used"]; t.Percent = RamPercent; t.Line1 = RamDetail; t.Line2 = RamSpec; } });
 
         foreach (var g in Gpus)
         {
             var gpu = g;
             Tiles.Add(new TileVm("", "")
             {
+                Glyph = "🎮",
                 Refresh = t =>
                 {
                     t.Title = Loc.I["tile_gpu"];
@@ -871,7 +930,7 @@ public sealed class MainViewModel : ViewModelBase
         {
             var disk = d;
             Tiles.Add(new TileVm("", "")
-            { Refresh = t => { t.Title = $"{Loc.I["tile_disk"]} {disk.Name}"; t.Caption = Loc.I["cap_used"]; t.Percent = disk.Percent; t.Line1 = disk.Detail; } });
+            { Glyph = "💽", Refresh = t => { t.Title = $"{Loc.I["tile_disk"]} {disk.Name}"; t.Caption = Loc.I["cap_used"]; t.Percent = disk.Percent; t.Line1 = disk.Detail; } });
         }
 
         // батарея - только если она есть (ноутбук)
@@ -880,6 +939,7 @@ public sealed class MainViewModel : ViewModelBase
         {
             Tiles.Add(new TileVm("", "")
             {
+                Glyph = "🔋",
                 Refresh = t =>
                 {
                     var ps = Native.GetPowerStatus();
@@ -902,6 +962,8 @@ public sealed class MainViewModel : ViewModelBase
     private void UpdateTileValues()
     {
         foreach (var t in Tiles) t.Refresh?.Invoke(t);
+        UpdateGreeting();
+        UpdateHint();
     }
 
     private void RefreshDisks()
