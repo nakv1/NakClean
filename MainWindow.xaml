@@ -109,8 +109,8 @@
             </StackPanel>
         </Grid>
 
-        <!-- ===== Тело ===== -->
-        <Grid Grid.Row="1">
+        <!-- ===== Тело ===== (размывается, пока открыта главная карточка) -->
+        <Grid x:Name="BodyGrid" Grid.Row="1">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="210"/>
                 <ColumnDefinition Width="*"/>
@@ -207,7 +207,13 @@
                     </Button>
                     <Button Style="{StaticResource SideToolBtn}" Click="AboutBtn_Click" Margin="8,0,0,0"
                             ToolTip="{Binding [nav_about], Source={x:Static loc:Loc.I}}">
-                        <TextBlock Text="ℹ" FontSize="15"/>
+                        <Grid>
+                            <TextBlock Text="ℹ" FontSize="15"/>
+                            <!-- золотая точка: есть новая версия (обновиться можно в «О программе») -->
+                            <Ellipse Width="7" Height="7" Fill="{StaticResource AccentBrush}"
+                                     HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-5,-9,0"
+                                     Visibility="{Binding HasUpdate, Converter={StaticResource BoolVis}}"/>
+                        </Grid>
                     </Button>
                 </StackPanel>
             </Grid>
@@ -1682,31 +1688,49 @@
             </Grid>
         </Grid>
 
-        <!-- ===== «Что нового» (после обновления или по кнопке в «О программе») ===== -->
-        <Grid Grid.Row="1" Panel.ZIndex="900" Background="#99000000"
+        <!-- ===== Главная карточка по центру: «Доступна новая версия» / «Что нового».
+                   Программа за ней размывается (эффект вешается в MainWindow.AnimateModal только пока карточка открыта) ===== -->
+        <Grid x:Name="ModalLayer" Grid.Row="1" Panel.ZIndex="900" Background="#59000000"
               Visibility="{Binding ShowWhatsNew, Converter={StaticResource BoolVis}}">
-            <Border Style="{StaticResource Card}" Width="520" MaxHeight="480" Padding="26,22"
-                    HorizontalAlignment="Center" VerticalAlignment="Center">
+            <Border Style="{StaticResource Card}" Width="420" MaxHeight="580" Padding="28,26,28,20"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    BorderBrush="{StaticResource AccentBrush}" BorderThickness="1" RenderTransformOrigin="0.5,0.5">
+                <Border.RenderTransform>
+                    <ScaleTransform x:Name="ModalScale" ScaleX="1" ScaleY="1"/>
+                </Border.RenderTransform>
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
-                    <StackPanel Orientation="Horizontal">
-                        <Border Width="40" Height="40" CornerRadius="11" Background="#1FDDB44B"
-                                BorderBrush="#33DDB44B" BorderThickness="1" VerticalAlignment="Center">
-                            <TextBlock Text="✨" FontSize="18" Foreground="{DynamicResource AccentTextBrush}"
+
+                    <!-- шапка: большая иконка + заголовок + подпись -->
+                    <StackPanel HorizontalAlignment="Center">
+                        <Border Width="64" Height="64" CornerRadius="32" Background="#1FDDB44B"
+                                BorderBrush="#55DDB44B" BorderThickness="1" HorizontalAlignment="Center">
+                            <TextBlock Text="✨" FontSize="28" Foreground="{DynamicResource AccentTextBrush}"
                                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
-                        <StackPanel Margin="14,0,0,0" VerticalAlignment="Center">
-                            <TextBlock Text="{Binding WhatsNewTitle}" FontSize="18" FontWeight="Bold"/>
-                            <TextBlock Text="{Binding [wn_sub], Source={x:Static loc:Loc.I}}" FontSize="12"
-                                       Foreground="{DynamicResource MutedBrush}" Margin="0,3,0,0"/>
-                        </StackPanel>
+                        <TextBlock Text="{Binding WhatsNewTitle}" FontSize="20" FontWeight="Bold" Margin="0,16,0,0"
+                                   TextAlignment="Center" TextWrapping="Wrap"/>
+                        <TextBlock Text="{Binding WhatsNewSub}" FontSize="13" Foreground="{DynamicResource MutedBrush}"
+                                   Margin="0,6,0,0" TextAlignment="Center" TextWrapping="Wrap"/>
                     </StackPanel>
 
-                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,16,0,0">
+                    <!-- что нового -->
+                    <Grid Grid.Row="1" Margin="0,18,0,0" Visibility="{Binding HasWhatsNewItems, Converter={StaticResource BoolVis}}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <StackPanel>
+                            <Border Height="1" Background="{DynamicResource CardBorderBrush}"/>
+                            <TextBlock Text="{Binding [wn_list], Source={x:Static loc:Loc.I}}" FontSize="11" FontWeight="Bold"
+                                       Foreground="{DynamicResource AccentTextBrush}" Margin="0,14,0,6"/>
+                        </StackPanel>
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                         <ItemsControl ItemsSource="{Binding WhatsNewItems}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
@@ -1723,12 +1747,35 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                     </ScrollViewer>
+                    </Grid>
 
-                    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
-                        <Button Content="{Binding [wn_more], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}"
-                                Margin="0,0,8,0" Command="{Binding OpenWhatsNewPageCommand}"/>
-                        <Button Content="{Binding [wn_ok], Source={x:Static loc:Loc.I}}" Style="{StaticResource AccentButton}"
-                                Padding="22,9" Command="{Binding CloseWhatsNewCommand}"/>
+                    <!-- прогресс скачивания обновления -->
+                    <StackPanel Grid.Row="2" Margin="0,16,0,0" Visibility="{Binding UpdateBusy, Converter={StaticResource BoolVis}}">
+                        <TextBlock Text="{Binding UpdateNote}" FontSize="12" Foreground="{DynamicResource MutedBrush}"
+                                   HorizontalAlignment="Center"/>
+                        <ProgressBar Height="6" Margin="0,8,0,0" Minimum="0" Maximum="100"
+                                     Value="{Binding UpdatePercent, Mode=OneWay}" IsIndeterminate="{Binding UpdatePercentUnknown, Mode=OneWay}"
+                                     Background="{DynamicResource TrackBrush}" BorderThickness="0"
+                                     Foreground="{DynamicResource AccentTextBrush}"/>
+                    </StackPanel>
+
+                    <!-- кнопки во всю ширину -->
+                    <StackPanel Grid.Row="3" Margin="0,20,0,0">
+                        <Button Content="{Binding UpdateButtonText}" Style="{StaticResource AccentButton}" Padding="0,11"
+                                HorizontalAlignment="Stretch" Command="{Binding UpdateFromNotesCommand}"
+                                Visibility="{Binding WhatsNewIsUpcoming, Converter={StaticResource BoolVis}}"/>
+                        <Button Content="{Binding [wn_later], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Padding="0,10"
+                                HorizontalAlignment="Stretch" Margin="0,8,0,0" Command="{Binding CloseWhatsNewCommand}"
+                                Visibility="{Binding WhatsNewIsUpcoming, Converter={StaticResource BoolVis}}"/>
+                        <Button Content="{Binding [wn_ok], Source={x:Static loc:Loc.I}}" Style="{StaticResource AccentButton}" Padding="0,11"
+                                HorizontalAlignment="Stretch" Command="{Binding CloseWhatsNewCommand}"
+                                Visibility="{Binding WhatsNewIsCurrent, Converter={StaticResource BoolVis}}"/>
+                        <TextBlock HorizontalAlignment="Center" Margin="0,14,0,0" FontSize="12">
+                            <Hyperlink Command="{Binding OpenWhatsNewPageCommand}" TextDecorations="{x:Null}"
+                                       Foreground="{DynamicResource MutedBrush}">
+                                <Run Text="{Binding [wn_more], Source={x:Static loc:Loc.I}, Mode=OneWay}"/>
+                            </Hyperlink>
+                        </TextBlock>
                     </StackPanel>
                 </Grid>
             </Border>

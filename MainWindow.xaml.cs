@@ -27,6 +27,11 @@ public partial class MainWindow : Window
         _isLight = _settings.Theme == "light";
         ApplyTheme(_isLight);
         UpdateToolButtons();
+        if (Vm is { } vm)
+            vm.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(MainViewModel.ShowWhatsNew)) AnimateModal(vm.ShowWhatsNew);
+            };
         CheckWhatsNew();
 
         // живой опрос только на «Обзоре» и когда окно не свёрнуто
@@ -69,6 +74,35 @@ public partial class MainWindow : Window
     }
 
     private MainViewModel? Vm => DataContext as MainViewModel;
+
+    // главная карточка: программа за ней плавно размывается и возвращается в фокус.
+    // Размытие висит только пока карточка открыта - иначе весь текст стал бы мутнее.
+    private void AnimateModal(bool open)
+    {
+        var ease = new System.Windows.Media.Animation.CubicEase
+        { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut };
+        var dur = TimeSpan.FromMilliseconds(open ? 260 : 180);
+
+        if (open)
+        {
+            var blur = new System.Windows.Media.Effects.BlurEffect
+            { Radius = 0, RenderingBias = System.Windows.Media.Effects.RenderingBias.Performance };
+            BodyGrid.Effect = blur;
+            blur.BeginAnimation(System.Windows.Media.Effects.BlurEffect.RadiusProperty,
+                new System.Windows.Media.Animation.DoubleAnimation(0, 9, dur) { EasingFunction = ease });
+
+            ModalLayer.BeginAnimation(OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(0, 1, dur));
+            var pop = new System.Windows.Media.Animation.DoubleAnimation(0.94, 1, dur) { EasingFunction = ease };
+            ModalScale.BeginAnimation(ScaleTransform.ScaleXProperty, pop);
+            ModalScale.BeginAnimation(ScaleTransform.ScaleYProperty, pop);
+        }
+        else if (BodyGrid.Effect is System.Windows.Media.Effects.BlurEffect b)
+        {
+            var back = new System.Windows.Media.Animation.DoubleAnimation(b.Radius, 0, dur) { EasingFunction = ease };
+            back.Completed += (_, _) => { if (Vm?.ShowWhatsNew != true) BodyGrid.Effect = null; };
+            b.BeginAnimation(System.Windows.Media.Effects.BlurEffect.RadiusProperty, back);
+        }
+    }
 
     // первый запуск новой версии (после обновления в один клик или ручного) - показать «Что нового».
     // Самый первый запуск программы вообще - не показываем.

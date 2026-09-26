@@ -89,6 +89,7 @@ public sealed class MainViewModel : ViewModelBase
     public RelayCommand CheckUpdatesCommand { get; }
     public RelayCommand OpenReleaseCommand { get; }
     public RelayCommand ShowWhatsNewCommand { get; }
+    public RelayCommand UpdateFromNotesCommand { get; }
     public RelayCommand CloseWhatsNewCommand { get; }
     public RelayCommand OpenWhatsNewPageCommand { get; }
     public RelayCommand ScanDeletedCommand { get; }
@@ -167,7 +168,8 @@ public sealed class MainViewModel : ViewModelBase
         CheckUpdatesCommand = new RelayCommand(async () => await CheckUpdatesAsync(true), () => !UpdateBusy);
         OpenReleaseCommand = new RelayCommand(OpenRelease, () => !UpdateBusy);
         ShowWhatsNewCommand = new RelayCommand(async () => await ShowWhatsNewAsync(true));
-        CloseWhatsNewCommand = new RelayCommand(() => ShowWhatsNew = false);
+        UpdateFromNotesCommand = new RelayCommand(async () => await UpdateFromCardAsync(), () => !UpdateBusy);
+        CloseWhatsNewCommand = new RelayCommand(() => ShowWhatsNew = false, () => !UpdateBusy);
         OpenWhatsNewPageCommand = new RelayCommand(OpenWhatsNewPage);
         ScanDeletedCommand = new RelayCommand(async () => await ScanDeletedAsync(), () => !RecoveryBusy);
         RecoverSelectedCommand = new RelayCommand(async () => await RecoverSelectedAsync(), () => !RecoveryBusy);
@@ -566,6 +568,15 @@ public sealed class MainViewModel : ViewModelBase
     private bool _hasUpdate;
     public bool HasUpdate { get => _hasUpdate; private set => Set(ref _hasUpdate, value); }
 
+    // процент скачивания обновления для полоски в карточке (-1 = неизвестно, анимация)
+    private int _updatePercent = -1;
+    public int UpdatePercent
+    {
+        get => _updatePercent;
+        private set { if (Set(ref _updatePercent, value)) OnPropertyChanged(nameof(UpdatePercentUnknown)); }
+    }
+    public bool UpdatePercentUnknown => _updatePercent < 0;
+
     private string _releaseUrl = "";
     private bool _updChecking;
     private UpdateInfo _updInfo;
@@ -574,7 +585,14 @@ public sealed class MainViewModel : ViewModelBase
     public bool UpdateBusy
     {
         get => _updBusy;
-        private set { if (Set(ref _updBusy, value)) { OpenReleaseCommand.RaiseCanExecuteChanged(); CheckUpdatesCommand.RaiseCanExecuteChanged(); } }
+        private set
+        {
+            if (!Set(ref _updBusy, value)) return;
+            OpenReleaseCommand.RaiseCanExecuteChanged();
+            CheckUpdatesCommand.RaiseCanExecuteChanged();
+            UpdateFromNotesCommand.RaiseCanExecuteChanged();
+            CloseWhatsNewCommand.RaiseCanExecuteChanged();
+        }
     }
 
     private bool CanInstallUpdate =>
@@ -595,12 +613,13 @@ public sealed class MainViewModel : ViewModelBase
 
             if (info.Available)
             {
-                HasUpdate = true;
                 _releaseUrl = info.Url;
                 _updInfo = info;
                 OnPropertyChanged(nameof(UpdateButtonText));
                 UpdateNote = string.Format(Loc.I["upd_available"], info.LatestVersion);
-                ToastService.Info(string.Format(Loc.I["upd_available"], info.LatestVersion));
+                HasUpdate = true;
+                // главная карточка по центру со списком изменений новой версии
+                _ = ShowWhatsNewAsync(false, info.LatestVersion);
             }
             else
             {
@@ -627,23 +646,58 @@ public sealed class MainViewModel : ViewModelBase
     private string _whatsNewTitle = "";
     public string WhatsNewTitle { get => _whatsNewTitle; private set => Set(ref _whatsNewTitle, value); }
 
+    private string _whatsNewSub = "";
+    public string WhatsNewSub { get => _whatsNewSub; private set => Set(ref _whatsNewSub, value); }
+
+    public bool HasWhatsNewItems => WhatsNewItems.Count > 0;
+
     private string _whatsNewUrl = "";
 
-    /// <param name="manual">по кнопке в «О программе» - при ошибке сказать об этом; после обновления - молча</param>
-    public async Task ShowWhatsNewAsync(bool manual)
+    // карточка про ещё не установленную версию: кнопки «Обновить сейчас» / «Позже»
+    private bool _whatsNewIsUpcoming;
+    public bool WhatsNewIsUpcoming
     {
-        string ver = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "";
+        get => _whatsNewIsUpcoming;
+        private set { if (Set(ref _whatsNewIsUpcoming, value)) OnPropertyChanged(nameof(WhatsNewIsCurrent)); }
+    }
+    public bool WhatsNewIsCurrent => !_whatsNewIsUpcoming;
+
+    /// <summary>
+    /// Главная карточка по центру (программа за ней размывается).
+    /// version = null - «что нового» в установленной версии; иначе - «доступна новая версия» со списком её изменений.
+    /// </summary>
+    /// <param name="manual">по кнопке - при ошибке сказать об этом; автоматически - молча</param>
+    public async Task ShowWhatsNewAsync(bool manual, string? version = null)
+    {
+        string current = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "";
+        string ver = version ?? current;
+        bool upcoming = version != null;
+
         var notes = await UpdateService.GetNotesAsync(ver);
-        if (notes is null)
+        // список изменений установленной версии без интернета не показать; о новой версии - сообщаем и без списка
+        if (notes is null && !upcoming)
         {
             if (manual) ToastService.Warn(Loc.I["wn_fail"]);
             return;
         }
+
         WhatsNewItems.Clear();
-        foreach (var i in notes.Items) WhatsNewItems.Add(i);
-        WhatsNewTitle = string.Format(Loc.I["wn_title"], ver);
-        _whatsNewUrl = notes.Url;
+        if (notes != null) foreach (var i in notes.Items) WhatsNewItems.Add(i);
+        OnPropertyChanged(nameof(HasWhatsNewItems));
+
+        WhatsNewIsUpcoming = upcoming;
+        WhatsNewTitle = string.Format(Loc.I[upcoming ? "wn_up_title" : "wn_title"], ver);
+        WhatsNewSub = upcoming ? string.Format(Loc.I["wn_up_sub"], current) : Loc.I["wn_sub"];
+        _whatsNewUrl = notes?.Url ?? _releaseUrl;
         ShowWhatsNew = true;
+    }
+
+    // «Обновить сейчас» в карточке: портабл - качаем прямо здесь (прогресс в карточке); иначе - страница релиза
+    private async Task UpdateFromCardAsync()
+    {
+        if (CanInstallUpdate) { await InstallUpdateAsync(confirm: false); return; }
+        ShowWhatsNew = false;
+        OpenRelease();
     }
 
     private void OpenWhatsNewPage()
@@ -652,17 +706,24 @@ public sealed class MainViewModel : ViewModelBase
         try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(_whatsNewUrl) { UseShellExecute = true }); } catch { }
     }
 
-    private async Task InstallUpdateAsync()
+    private async Task InstallUpdateAsync(bool confirm = true)
     {
-        var ok = System.Windows.MessageBox.Show(string.Format(Loc.I["upd_confirm"], _updInfo.LatestVersion), "NakClean",
-                                 System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Question);
-        if (ok != System.Windows.MessageBoxResult.Yes) return;
+        if (confirm)
+        {
+            var ok = System.Windows.MessageBox.Show(string.Format(Loc.I["upd_confirm"], _updInfo.LatestVersion), "NakClean",
+                                     System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Question);
+            if (ok != System.Windows.MessageBoxResult.Yes) return;
+        }
 
         UpdateBusy = true;
+        UpdatePercent = -1;
         try
         {
             var progress = new Progress<int>(p =>
-                UpdateNote = p >= 0 ? string.Format(Loc.I["upd_downloading"], p) : Loc.I["upd_downloading_nopct"]);
+            {
+                UpdatePercent = p;
+                UpdateNote = p >= 0 ? string.Format(Loc.I["upd_downloading"], p) : Loc.I["upd_downloading_nopct"];
+            });
             await UpdateService.InstallAsync(_updInfo, progress);
 
             UpdateNote = Loc.I["upd_restarting"];
