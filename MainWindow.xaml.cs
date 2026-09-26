@@ -27,6 +27,7 @@ public partial class MainWindow : Window
         _isLight = _settings.Theme == "light";
         ApplyTheme(_isLight);
         UpdateToolButtons();
+        CheckWhatsNew();
 
         // живой опрос только на «Обзоре» и когда окно не свёрнуто
         NavDash.Checked += (_, _) => UpdateLiveActive();
@@ -44,6 +45,8 @@ public partial class MainWindow : Window
         NavStartup.Checked += (_, _) => Vm?.EnsureStartupLoaded();
         NavApps.Checked += (_, _) => Vm?.EnsureAppsLoaded();
         NavDiag.Checked += (_, _) => Vm?.EnsureDiagnosticsLoaded();
+        NavMaint.Checked += (_, _) => Vm?.EnsureMaintenanceLoaded();
+        RgTabBackups.Checked += (_, _) => Vm?.RefreshBackups();
 
         // плавный fade контента при смене вкладки
         foreach (var nav in new[] { NavDash, NavCheck, NavClean, NavOptimize, NavMaint,
@@ -66,6 +69,23 @@ public partial class MainWindow : Window
     }
 
     private MainViewModel? Vm => DataContext as MainViewModel;
+
+    // первый запуск новой версии (после обновления в один клик или ручного) - показать «Что нового».
+    // Самый первый запуск программы вообще - не показываем.
+    private void CheckWhatsNew()
+    {
+        string cur = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "";
+        string last = _settings.LastVersion;
+        bool afterUpdate = Environment.GetCommandLineArgs().Contains(UpdateService.UpdatedArg);
+        bool newer = Version.TryParse(last, out var lv) && Version.TryParse(cur, out var cv) && cv > lv;
+
+        if (last != cur)
+        {
+            _settings.LastVersion = cur;
+            _settings.Save();
+        }
+        if (afterUpdate || newer) _ = Vm?.ShowWhatsNewAsync(manual: false);
+    }
 
     private void HintBtn_Click(object sender, RoutedEventArgs e)
     {
@@ -136,6 +156,7 @@ public partial class MainWindow : Window
                 () => Process.Start("rundll32.exe", $"shell32.dll,OpenAs_RunDLL {path}")));
         menu.Items.Add(Mk(Loc.I["ctx_copypath"], () => Clipboard.SetText(path)));
         menu.Items.Add(new Separator());
+        menu.Items.Add(Mk(Loc.I["ctx_recycle"], () => Vm?.DeleteToRecycle(path, _hwnd)));
         menu.Items.Add(Mk(Loc.I["ctx_props"], () => SHObjectProperties(_hwnd, 2 /*SHOP_FILEPATH*/, path, null)));
 
         menu.IsOpen = true;

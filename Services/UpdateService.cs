@@ -10,6 +10,9 @@ namespace NakClean.Services;
 public readonly record struct UpdateInfo(bool Checked, bool Available, string LatestVersion, string Url,
                                          string ExeUrl = "", string ShaUrl = "");
 
+/// <summary>Список изменений одной версии (для окна «Что нового»).</summary>
+public sealed record ReleaseNotes(string Version, List<string> Items, string Url);
+
 /// <summary>Проверка и установка новой версии через GitHub Releases (последний релиз репозитория).</summary>
 public static class UpdateService
 {
@@ -145,6 +148,35 @@ public static class UpdateService
     private static void TryDelete(string path)
     {
         try { if (File.Exists(path)) File.Delete(path); } catch { }
+    }
+
+    /// <summary>
+    /// Список изменений версии - пункты «- ...» из описания релиза на GitHub.
+    /// null - нет интернета, релиза нет или список пустой (тогда просто ничего не показываем).
+    /// </summary>
+    public static async Task<ReleaseNotes?> GetNotesAsync(string version)
+    {
+        try
+        {
+            using var resp = await Http.GetAsync($"https://api.github.com/repos/nakv1/NakClean/releases/tags/v{version}");
+            if (!resp.IsSuccessStatusCode) return null;
+
+            await using var stream = await resp.Content.ReadAsStreamAsync();
+            using var doc = await JsonDocument.ParseAsync(stream);
+            var root = doc.RootElement;
+            string body = root.TryGetProperty("body", out var b) ? b.GetString() ?? "" : "";
+            string url = root.TryGetProperty("html_url", out var u) ? u.GetString() ?? "" : "";
+
+            var items = body.Split('\n')
+                .Select(l => l.Trim())
+                .Where(l => l.StartsWith("- "))
+                .Select(l => l[2..].Trim())
+                .Where(l => l.Length > 0)
+                .Take(20)
+                .ToList();
+            return items.Count == 0 ? null : new ReleaseNotes(version, items, url);
+        }
+        catch { return null; }
     }
 
     // сравниваем только major.minor.build, чтобы 4-я компонента не путала

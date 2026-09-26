@@ -372,11 +372,12 @@
 
                     <!-- Шапка -->
                     <Grid Grid.Row="0" Margin="6,4,6,8">
-                        <StackPanel>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <StackPanel Margin="0,0,16,0">
                             <TextBlock Text="{Binding [hdr_clean], Source={x:Static loc:Loc.I}}" FontSize="22" FontWeight="Bold"/>
-                            <TextBlock Text="{Binding Status}" Foreground="{DynamicResource MutedBrush}" Margin="0,4,0,0"/>
+                            <TextBlock Text="{Binding Status}" Foreground="{DynamicResource MutedBrush}" Margin="0,4,0,0" TextWrapping="Wrap"/>
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
                             <Button Content="{Binding [btn_select_all], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Margin="0,0,8,0"
                                     Command="{Binding SelectAllCommand}"/>
                             <Button Content="{Binding [btn_select_none], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}"
@@ -471,26 +472,31 @@
                     </Grid.RowDefinitions>
 
                     <Grid Grid.Row="0" Margin="6,4,6,8">
-                        <StackPanel>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                        <StackPanel Margin="0,0,16,0">
                             <TextBlock Text="{Binding [hdr_optimize], Source={x:Static loc:Loc.I}}" FontSize="22" FontWeight="Bold"/>
                             <TextBlock Text="{Binding OptNote}" Foreground="{DynamicResource MutedBrush}" Margin="0,4,0,0" TextWrapping="Wrap"/>
-                            <CheckBox Content="{Binding [opt_restore], Source={x:Static loc:Loc.I}}" IsChecked="{Binding CreateRestore}"
-                                      Margin="0,10,0,0" FontSize="13"/>
-                            <!-- профили: отмечают набор твиков одним кликом -->
-                            <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-                                <TextBlock Text="{Binding [opt_profiles], Source={x:Static loc:Loc.I}}" VerticalAlignment="Center"
-                                           Foreground="{DynamicResource MutedBrush}" FontSize="13" Margin="0,0,10,0"/>
-                                <Button Content="{Binding [prof_balanced], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Padding="13,7"
-                                        Command="{Binding ApplyProfileCommand}" CommandParameter="balanced" Margin="0,0,8,0"/>
-                                <Button Content="{Binding [prof_gaming], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Padding="13,7"
-                                        Command="{Binding ApplyProfileCommand}" CommandParameter="gaming" Margin="0,0,8,0"/>
-                                <Button Content="{Binding [prof_quiet], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Padding="13,7"
-                                        Command="{Binding ApplyProfileCommand}" CommandParameter="quiet" Margin="0,0,8,0"/>
-                                <Button Content="{Binding [prof_clear], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Padding="13,7"
-                                        Command="{Binding ApplyProfileCommand}" CommandParameter="none"/>
-                            </StackPanel>
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
+                        <!-- галочка и профили - на всю ширину под шапкой -->
+                        <StackPanel Grid.Row="1" Grid.ColumnSpan="2">
+                            <CheckBox Content="{Binding [opt_restore], Source={x:Static loc:Loc.I}}" IsChecked="{Binding CreateRestore}"
+                                      Margin="0,10,0,0" FontSize="13" HorizontalAlignment="Left"/>
+                            <!-- профили: отмечают набор твиков одним кликом; в узком окне переносятся -->
+                            <WrapPanel Margin="0,12,0,0">
+                                <TextBlock Text="{Binding [opt_profiles], Source={x:Static loc:Loc.I}}" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource MutedBrush}" FontSize="13" Margin="0,0,10,6"/>
+                                <Button Content="{Binding [prof_balanced], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Padding="13,7"
+                                        Command="{Binding ApplyProfileCommand}" CommandParameter="balanced" Margin="0,0,8,6"/>
+                                <Button Content="{Binding [prof_gaming], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Padding="13,7"
+                                        Command="{Binding ApplyProfileCommand}" CommandParameter="gaming" Margin="0,0,8,6"/>
+                                <Button Content="{Binding [prof_quiet], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Padding="13,7"
+                                        Command="{Binding ApplyProfileCommand}" CommandParameter="quiet" Margin="0,0,8,6"/>
+                                <Button Content="{Binding [prof_clear], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Padding="13,7"
+                                        Command="{Binding ApplyProfileCommand}" CommandParameter="none" Margin="0,0,0,6"/>
+                            </WrapPanel>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
                             <Button Content="{Binding [opt_revert], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Margin="0,0,8,0" Command="{Binding RevertOptCommand}"/>
                             <Button Content="↻" Style="{StaticResource GhostButton}" Margin="0,0,8,0" Command="{Binding RefreshOptCommand}"/>
                             <Button Content="{Binding [opt_apply], Source={x:Static loc:Loc.I}}" Style="{StaticResource AccentButton}" Padding="18,9" Command="{Binding ApplyOptCommand}"/>
@@ -599,6 +605,9 @@
                                                 <TextBlock Text="{Binding Title}" FontSize="14" FontWeight="SemiBold"/>
                                                 <TextBlock Text="{Binding Desc}" FontSize="12" Foreground="{DynamicResource MutedBrush}"
                                                            Margin="0,2,0,0" TextWrapping="Wrap"/>
+                                                <TextBlock Text="{Binding Info}" FontSize="12" FontWeight="SemiBold" Foreground="{Binding InfoBrush}"
+                                                           Margin="0,5,0,0" TextWrapping="Wrap"
+                                                           Visibility="{Binding HasInfo, Converter={StaticResource BoolVis}}"/>
                                                 <!-- комментарий что происходит / результат -->
                                                 <TextBlock Text="{Binding Status}" FontSize="12" Foreground="{DynamicResource AccentTextBrush}"
                                                            Margin="0,6,0,0" TextWrapping="Wrap"
@@ -647,12 +656,30 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <Grid Grid.Row="0" Margin="6,4,6,8">
-                        <StackPanel>
-                            <TextBlock Text="{Binding [hdr_registry], Source={x:Static loc:Loc.I}}" FontSize="22" FontWeight="Bold"/>
-                            <TextBlock Text="{Binding RegNote}" Foreground="{DynamicResource MutedBrush}" Margin="0,4,0,0" TextWrapping="Wrap"/>
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
+                    <TextBlock Grid.Row="0" Text="{Binding [hdr_registry], Source={x:Static loc:Loc.I}}" FontSize="22" FontWeight="Bold" Margin="6,4,0,6"/>
+
+                    <!-- Под-вкладки -->
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="6,0,0,8">
+                        <RadioButton x:Name="RgTabIssues" Content="{Binding [rg_tab_issues], Source={x:Static loc:Loc.I}}" Style="{StaticResource NavButton}" GroupName="rgsub" IsChecked="True"/>
+                        <RadioButton x:Name="RgTabBackups" Content="{Binding [rg_tab_backups], Source={x:Static loc:Loc.I}}" Style="{StaticResource NavButton}" GroupName="rgsub"/>
+                    </StackPanel>
+
+                    <!-- ===== Под-вкладка: Поиск проблем ===== -->
+                    <Grid Grid.Row="2" Visibility="{Binding IsChecked, ElementName=RgTabIssues, Converter={StaticResource BoolVis}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="6,0,6,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="{Binding RegNote}" Foreground="{DynamicResource MutedBrush}" Margin="0,0,16,0"
+                                   VerticalAlignment="Center" TextWrapping="Wrap"/>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
                             <Button Content="{Binding [reg_scan], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Margin="0,0,8,0"
                                     Command="{Binding ScanRegistryCommand}"/>
                             <Button Content="{Binding [reg_fix], Source={x:Static loc:Loc.I}}" Style="{StaticResource AccentButton}"
@@ -709,6 +736,52 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                     </ScrollViewer>
+                    </Grid>
+
+                    <!-- ===== Под-вкладка: Резервные копии ===== -->
+                    <Grid Grid.Row="2" Visibility="{Binding IsChecked, ElementName=RgTabBackups, Converter={StaticResource BoolVis}}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <Grid Grid.Row="0" Margin="6,0,6,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{Binding BackupNote}" Foreground="{DynamicResource MutedBrush}" Margin="0,0,16,0"
+                                       VerticalAlignment="Center" TextWrapping="Wrap"/>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                                <Button Content="{Binding [rb_folder], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Margin="0,0,8,0"
+                                        Command="{Binding OpenBackupFolderCommand}"/>
+                                <Button Content="{Binding [rb_delete], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Margin="0,0,8,0"
+                                        Command="{Binding DeleteBackupCommand}"/>
+                                <Button Content="↻" Style="{StaticResource GhostButton}" Margin="0,0,8,0" Command="{Binding RefreshBackupsCommand}"/>
+                                <Button Content="{Binding [rb_restore], Source={x:Static loc:Loc.I}}" Style="{StaticResource AccentButton}"
+                                        Padding="18,9" Command="{Binding RestoreBackupCommand}"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <ListBox Grid.Row="1" Style="{StaticResource DarkList}" Margin="6,0"
+                                 ItemsSource="{Binding RegBackups}" SelectedItem="{Binding SelectedBackup}"
+                                 Visibility="{Binding HasBackups, Converter={StaticResource BoolVis}}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="2,3">
+                                        <TextBlock Text="{Binding WhenText}" FontSize="13" FontWeight="SemiBold"/>
+                                        <TextBlock Text="{Binding KindText}" FontSize="12" Foreground="{DynamicResource MutedBrush}" Margin="0,2,0,0"/>
+                                        <TextBlock Text="{Binding FileName}" FontSize="11" Foreground="#FF6E7787" Margin="0,2,0,0"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+
+                        <Border Grid.Row="1" Style="{StaticResource Card}" Margin="6,0" Padding="20" VerticalAlignment="Top"
+                                Visibility="{Binding NoBackups, Converter={StaticResource BoolVis}}">
+                            <TextBlock Text="{Binding [rb_empty], Source={x:Static loc:Loc.I}}" Foreground="{DynamicResource MutedBrush}"
+                                       TextWrapping="Wrap" HorizontalAlignment="Center"/>
+                        </Border>
+                    </Grid>
                 </Grid>
 
                 <!-- ===== Страница: Запуск ===== -->
@@ -738,8 +811,10 @@
                                 <RowDefinition Height="*"/>
                             </Grid.RowDefinitions>
                             <Grid Grid.Row="0" Margin="6,0,6,8">
-                                <TextBlock Text="{Binding StartupNote}" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center"/>
-                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding StartupNote}" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center"
+                                           Margin="0,0,16,0" TextWrapping="Wrap"/>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal">
                                     <Button Content="{Binding [btn_enable], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Margin="0,0,8,0" Command="{Binding EnableStartupCommand}"/>
                                     <Button Content="{Binding [btn_disable], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Margin="0,0,8,0" Command="{Binding DisableStartupCommand}"/>
                                     <Button Content="{Binding [btn_delete], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Margin="0,0,8,0" Command="{Binding DeleteStartupCommand}"/>
@@ -785,8 +860,10 @@
                                 <RowDefinition Height="*"/>
                             </Grid.RowDefinitions>
                             <Grid Grid.Row="0" Margin="6,0,6,8">
-                                <TextBlock Text="{Binding TasksNote}" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center"/>
-                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding TasksNote}" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center"
+                                           Margin="0,0,16,0" TextWrapping="Wrap"/>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal">
                                     <Button Content="{Binding [btn_enable], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Margin="0,0,8,0" Command="{Binding EnableTaskCommand}"/>
                                     <Button Content="{Binding [btn_disable], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Margin="0,0,8,0" Command="{Binding DisableTaskCommand}"/>
                                     <Button Content="{Binding [btn_delete], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Margin="0,0,8,0" Command="{Binding DeleteTaskCommand}"/>
@@ -830,8 +907,10 @@
                                 <RowDefinition Height="*"/>
                             </Grid.RowDefinitions>
                             <Grid Grid.Row="0" Margin="6,0,6,8">
-                                <TextBlock Text="{Binding ServicesNote}" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding ServicesNote}" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center"
+                                           Margin="0,0,16,0" TextWrapping="Wrap"/>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal">
                                     <TextBox Width="180" Style="{StaticResource DarkTextBox}" Margin="0,0,8,0"
                                              Text="{Binding ServicesSearch, UpdateSourceTrigger=PropertyChanged}"/>
                                     <Button Content="{Binding [btn_enable], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Margin="0,0,8,0" Command="{Binding EnableServiceCommand}"/>
@@ -876,8 +955,10 @@
                                 <RowDefinition Height="*"/>
                             </Grid.RowDefinitions>
                             <Grid Grid.Row="0" Margin="6,0,6,8">
-                                <TextBlock Text="{Binding ContextNote}" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center"/>
-                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding ContextNote}" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center"
+                                           Margin="0,0,16,0" TextWrapping="Wrap"/>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal">
                                     <Button Content="{Binding [btn_enable], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Margin="0,0,8,0" Command="{Binding EnableContextCommand}"/>
                                     <Button Content="{Binding [btn_disable], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Margin="0,0,8,0" Command="{Binding DisableContextCommand}"/>
                                     <Button Content="{Binding [btn_delete], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Margin="0,0,8,0" Command="{Binding DeleteContextCommand}"/>
@@ -925,11 +1006,12 @@
                     </Grid.RowDefinitions>
 
                     <Grid Grid.Row="0" Margin="6,4,6,8">
-                        <StackPanel>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <StackPanel Margin="0,0,16,0">
                             <TextBlock Text="{Binding [hdr_apps], Source={x:Static loc:Loc.I}}" FontSize="22" FontWeight="Bold"/>
-                            <TextBlock Text="{Binding AppsNote}" Foreground="{DynamicResource MutedBrush}" Margin="0,4,0,0"/>
+                            <TextBlock Text="{Binding AppsNote}" Foreground="{DynamicResource MutedBrush}" Margin="0,4,0,0" TextWrapping="Wrap"/>
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
                             <TextBox Width="220" Style="{StaticResource DarkTextBox}" Margin="0,0,8,0"
                                      Text="{Binding AppSearch, UpdateSourceTrigger=PropertyChanged}"/>
                             <Button Content="↻" Style="{StaticResource GhostButton}" Command="{Binding RefreshAppsCommand}"/>
@@ -1275,11 +1357,12 @@
 
                     <!-- Шапка -->
                     <Grid Grid.Row="0" Margin="6,4,6,8">
-                        <StackPanel>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <StackPanel Margin="0,0,16,0">
                             <TextBlock Text="{Binding [nav_recovery], Source={x:Static loc:Loc.I}}" FontSize="22" FontWeight="Bold"/>
                             <TextBlock Text="{Binding RecoveryNote}" Foreground="{DynamicResource MutedBrush}" Margin="0,4,0,0" TextWrapping="Wrap"/>
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
                             <ComboBox ItemsSource="{Binding RecoveryDrives}" SelectedItem="{Binding SelectedRecoveryDrive}"
                                       Style="{StaticResource DarkCombo}" ItemContainerStyle="{StaticResource DarkComboItem}"
                                       Width="84" Height="38" Margin="0,0,8,0"/>
@@ -1354,12 +1437,13 @@
                     </Grid.RowDefinitions>
 
                     <Grid Grid.Row="0" Margin="6,4,6,8">
-                        <StackPanel>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <StackPanel Margin="0,0,16,0">
                             <TextBlock Text="{Binding [hdr_diag], Source={x:Static loc:Loc.I}}" FontSize="22" FontWeight="Bold"/>
                             <TextBlock Text="{Binding ReportNote}" Foreground="{DynamicResource AccentTextBrush}" FontSize="12" Margin="0,4,0,0"
                                        TextTrimming="CharacterEllipsis"/>
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
                             <Button Content="{Binding [report_btn], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Margin="0,0,8,0"
                                     Command="{Binding ExportReportCommand}"/>
                             <Button Content="{Binding [btn_refresh], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}"
@@ -1578,6 +1662,8 @@
                             <Button Content="{Binding UpdateButtonText}" Style="{StaticResource AccentButton}"
                                     Margin="0,10,0,0" HorizontalAlignment="Center" Command="{Binding OpenReleaseCommand}"
                                     Visibility="{Binding HasUpdate, Converter={StaticResource BoolVis}}"/>
+                            <Button Content="{Binding [wn_btn], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}"
+                                    Margin="0,10,0,0" HorizontalAlignment="Center" Command="{Binding ShowWhatsNewCommand}"/>
 
                             <TextBlock Text="© 2026 nak (github.com/nakv1) · Все права защищены" FontSize="11"
                                        Foreground="{DynamicResource MutedBrush}" HorizontalAlignment="Center"
@@ -1594,6 +1680,58 @@
                     </StackPanel>
                 </Border>
             </Grid>
+        </Grid>
+
+        <!-- ===== «Что нового» (после обновления или по кнопке в «О программе») ===== -->
+        <Grid Grid.Row="1" Panel.ZIndex="900" Background="#99000000"
+              Visibility="{Binding ShowWhatsNew, Converter={StaticResource BoolVis}}">
+            <Border Style="{StaticResource Card}" Width="520" MaxHeight="480" Padding="26,22"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <StackPanel Orientation="Horizontal">
+                        <Border Width="40" Height="40" CornerRadius="11" Background="#1FDDB44B"
+                                BorderBrush="#33DDB44B" BorderThickness="1" VerticalAlignment="Center">
+                            <TextBlock Text="✨" FontSize="18" Foreground="{DynamicResource AccentTextBrush}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <StackPanel Margin="14,0,0,0" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding WhatsNewTitle}" FontSize="18" FontWeight="Bold"/>
+                            <TextBlock Text="{Binding [wn_sub], Source={x:Static loc:Loc.I}}" FontSize="12"
+                                       Foreground="{DynamicResource MutedBrush}" Margin="0,3,0,0"/>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,16,0,0">
+                        <ItemsControl ItemsSource="{Binding WhatsNewItems}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="0,4">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="•" FontSize="14" FontWeight="Bold" Margin="2,0,10,0"
+                                                   Foreground="{DynamicResource AccentTextBrush}"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding}" FontSize="13" TextWrapping="Wrap"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+                        <Button Content="{Binding [wn_more], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}"
+                                Margin="0,0,8,0" Command="{Binding OpenWhatsNewPageCommand}"/>
+                        <Button Content="{Binding [wn_ok], Source={x:Static loc:Loc.I}}" Style="{StaticResource AccentButton}"
+                                Padding="22,9" Command="{Binding CloseWhatsNewCommand}"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
         </Grid>
 
         <!-- ===== Тосты-уведомления (правый нижний угол) ===== -->

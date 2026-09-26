@@ -52,14 +52,31 @@ public partial class App : Application
         e.Handled = true; // не даём приложению закрыться
     }
 
+    // лог не растёт бесконечно: больше 1 МБ - оставляем только свежий конец (~256 КБ)
+    private const long LogMaxBytes = 1024 * 1024;
+    private const int LogKeepChars = 256 * 1024;
+
     private static void Log(string source, Exception? ex)
     {
         if (ex is null) return;
         try
         {
+            TrimLog();
             File.AppendAllText(LogPath,
                 $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {source}: {ex}\n\n");
         }
         catch { /* лог не должен ломать приложение */ }
+    }
+
+    private static void TrimLog()
+    {
+        var fi = new FileInfo(LogPath);
+        if (!fi.Exists || fi.Length <= LogMaxBytes) return;
+
+        string text = File.ReadAllText(LogPath);
+        string tail = text[^Math.Min(LogKeepChars, text.Length)..];
+        int cut = tail.IndexOf("\n[", StringComparison.Ordinal);   // начать с целой записи
+        if (cut >= 0) tail = tail[(cut + 1)..];
+        File.WriteAllText(LogPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] (старые записи обрезаны)\n\n" + tail);
     }
 }

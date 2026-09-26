@@ -17,6 +17,7 @@ public static class HealthCheckService
         var items = new List<HealthItem>();
 
         CheckMemory(items);
+        CheckMemoryTest(items);
         CheckDiskSpace(items);
         CheckSmart(items);
         CheckDefender(items);
@@ -51,6 +52,36 @@ public static class HealthCheckService
             Value = value,
             Level = level,
             Hint = level == CheckLevel.Good ? null : Loc.I["hm_h"],
+        });
+    }
+
+    /// <summary>
+    /// Итог последнего теста памяти Windows. Ошибки ОЗУ - серьёзная неисправность (красный).
+    /// Не запускали / прерван - без штрафа к оценке, только подсказка.
+    /// </summary>
+    private static void CheckMemoryTest(List<HealthItem> items)
+    {
+        var r = MaintenanceService.GetLastMemoryTest();
+        string date = r is { } x
+            ? x.When.ToString("d MMMM yyyy", System.Globalization.CultureInfo.GetCultureInfo(Loc.I.IsEn ? "en-US" : "ru-RU"))
+            : "";
+
+        var (key, level, hint) = r?.Outcome switch
+        {
+            MemTestOutcome.NoErrors => ("hmt_ok", CheckLevel.Good, (string?)null),
+            MemTestOutcome.Errors => ("hmt_err", CheckLevel.Bad, Loc.I["hmt_err_h"]),
+            MemTestOutcome.Interrupted => ("hmt_int", CheckLevel.Info, Loc.I["hmt_run_h"]),
+            MemTestOutcome.Failed => ("hmt_fail", CheckLevel.Info, Loc.I["hmt_run_h"]),
+            _ => ("hmt_none", CheckLevel.Info, Loc.I["hmt_run_h"]),
+        };
+
+        items.Add(new HealthItem
+        {
+            Category = Loc.I["hc_mem"],
+            Title = Loc.I["hmt_t"],
+            Value = string.Format(Loc.I[key], date),
+            Level = level,
+            Hint = hint,
         });
     }
 

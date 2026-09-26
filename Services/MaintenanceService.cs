@@ -11,6 +11,9 @@ public readonly record struct MaintProgress(double? Percent);
 /// <summary>Результат проверки: текст-вердикт + нужно ли вообще запускать действие.</summary>
 public readonly record struct CheckResult(string Text, bool ActionNeeded);
 
+public enum MemTestOutcome { NoErrors, Errors, Interrupted, Failed }
+public readonly record struct MemTestResult(DateTime When, MemTestOutcome Outcome);
+
 /// <summary>
 /// Обёртки над штатными инструментами обслуживания Windows (SFC, DISM, defrag, mdsched).
 /// Запуск в фоне с парсингом процента, захватом вывода и поддержкой отмены (kill).
@@ -39,6 +42,34 @@ public static class MaintenanceService
     {
         try { Process.Start(new ProcessStartInfo("mdsched.exe") { UseShellExecute = true }); return true; }
         catch { return false; }
+    }
+
+    /// <summary>
+    /// Последний результат теста памяти Windows. mdsched пишет его в журнал «Система» после перезагрузки.
+    /// 1101/1201 - ошибок нет, 1102/1202 - аппаратные ошибки, 1103 - прервана, 1104 - не завершилась.
+    /// </summary>
+    public static MemTestResult? GetLastMemoryTest()
+    {
+        const string query =
+            "*[System[Provider[@Name='Microsoft-Windows-MemoryDiagnostics-Results'] and " +
+            "(EventID=1101 or EventID=1102 or EventID=1103 or EventID=1104 or EventID=1201 or EventID=1202)]]";
+        try
+        {
+            using var reader = new System.Diagnostics.Eventing.Reader.EventLogReader(
+                new System.Diagnostics.Eventing.Reader.EventLogQuery("System",
+                    System.Diagnostics.Eventing.Reader.PathType.LogName, query) { ReverseDirection = true });
+            using var e = reader.ReadEvent();
+            if (e?.TimeCreated is not DateTime when) return null;
+            var outcome = e.Id switch
+            {
+                1101 or 1201 => MemTestOutcome.NoErrors,
+                1102 or 1202 => MemTestOutcome.Errors,
+                1103 => MemTestOutcome.Interrupted,
+                _ => MemTestOutcome.Failed,
+            };
+            return new MemTestResult(when, outcome);
+        }
+        catch { return null; }
     }
 
     /// <summary>Запускает инструмент: парсит %, копит читаемый вывод, поддерживает отмену. Возвращает (успех, вывод).</summary>

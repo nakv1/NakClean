@@ -104,7 +104,7 @@ public static class ContextMenuService
         };
         try
         {
-            RegistryFixService.Backup(new[] { issue });
+            RegistryFixService.Backup(new[] { issue }, "contextmenu");
             var (_, failed) = RegistryFixService.Delete(new[] { issue });
             return failed == 0;
         }

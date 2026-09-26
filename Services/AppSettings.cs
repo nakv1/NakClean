@@ -9,6 +9,9 @@ public sealed class AppSettings
     public string Language { get; set; } = "ru";
     public string Theme { get; set; } = "dark";
 
+    // версия при прошлом запуске - чтобы после обновления показать «Что нового»
+    public string LastVersion { get; set; } = "";
+
     private static string PathFile =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "NakClean", "settings.json");
@@ -18,11 +21,17 @@ public sealed class AppSettings
         try
         {
             if (File.Exists(PathFile))
-                return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(PathFile)) ?? new AppSettings();
+                return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(PathFile)) ?? FirstRun();
         }
         catch { }
-        return new AppSettings();
+        return FirstRun();
     }
+
+    // первый запуск: язык как у интерфейса Windows (русская Windows - русский, любая другая - английский)
+    private static AppSettings FirstRun() => new() { Language = DetectLanguage() };
+
+    public static string DetectLanguage()
+        => System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "ru" ? "ru" : "en";
 
     public void Save()
     {

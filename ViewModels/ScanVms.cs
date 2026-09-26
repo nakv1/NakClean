@@ -16,8 +16,22 @@ public sealed class DriveItemVm
 public sealed class TreeRowVm : ViewModelBase
 {
     private readonly Child _item;
-    private readonly long _rootSize;
+    private long _rootSize;
     private readonly Action<TreeRowVm> _toggle;
+
+    /// <summary>После удаления части файлов: пересчитать размеры/проценты строки.</summary>
+    public void Refresh(long rootSize)
+    {
+        _rootSize = rootSize;
+        OnPropertyChanged(nameof(SizeText));
+        OnPropertyChanged(nameof(AllocText));
+        OnPropertyChanged(nameof(FilesText));
+        OnPropertyChanged(nameof(Percent));
+        OnPropertyChanged(nameof(PercentText));
+        OnPropertyChanged(nameof(BarWidth));
+        OnPropertyChanged(nameof(HasChildren));
+        OnPropertyChanged(nameof(Glyph));
+    }
 
     public TreeRowVm(Child item, int depth, long rootSize, Action<TreeRowVm> toggle)
     {

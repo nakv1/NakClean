@@ -39,7 +39,14 @@ jobs:
         run: |
           $prev = git describe --tags --abbrev=0 "${{ github.ref_name }}^" 2>$null
           $range = if ($prev) { "$prev..${{ github.ref_name }}" } else { "${{ github.ref_name }}" }
-          $lines = git log $range --no-merges --pretty="- %s"
+          # пункты «- ...» из текста коммита, если есть; иначе - заголовок коммита
+          $log = (git log $range --no-merges --pretty=format:"%s%x1f%b%x1e") -join "`n"
+          $lines = foreach ($c in $log -split [char]0x1e) {
+            $c = $c.Trim(); if (-not $c) { continue }
+            $parts = $c -split [char]0x1f, 2
+            $body = @(if ($parts.Count -gt 1) { $parts[1] -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_.StartsWith('- ') } })
+            if ($body.Count -gt 0) { $body } else { "- " + $parts[0].Trim() }
+          }
           $hash = Get-Content publish/NakClean.exe.sha256
           @("## Что нового", "", $lines, "", "SHA256: ``$hash``") | Out-File -Encoding utf8 notes.md
 

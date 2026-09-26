@@ -60,6 +60,10 @@ public sealed class MainViewModel : ViewModelBase
     public RelayCommand SortAppsCommand { get; }
     public RelayCommand ScanRegistryCommand { get; }
     public RelayCommand FixRegistryCommand { get; }
+    public RelayCommand RestoreBackupCommand { get; }
+    public RelayCommand DeleteBackupCommand { get; }
+    public RelayCommand OpenBackupFolderCommand { get; }
+    public RelayCommand RefreshBackupsCommand { get; }
     public RelayCommand RefreshTasksCommand { get; }
     public RelayCommand EnableTaskCommand { get; }
     public RelayCommand DisableTaskCommand { get; }
@@ -78,13 +82,15 @@ public sealed class MainViewModel : ViewModelBase
     public RelayCommand RevertAllCommand { get; }
     public RelayCommand AnalyzeCommand { get; }
     public RelayCommand BrowseFolderCommand { get; }
-    public RelayCommand OpenFileCommand { get; }
     public RelayCommand MapUpCommand { get; }
     public RelayCommand RefreshBatteryCommand { get; }
     public RelayCommand RefreshBootCommand { get; }
     public RelayCommand ExportReportCommand { get; }
     public RelayCommand CheckUpdatesCommand { get; }
     public RelayCommand OpenReleaseCommand { get; }
+    public RelayCommand ShowWhatsNewCommand { get; }
+    public RelayCommand CloseWhatsNewCommand { get; }
+    public RelayCommand OpenWhatsNewPageCommand { get; }
     public RelayCommand ScanDeletedCommand { get; }
     public RelayCommand RecoverSelectedCommand { get; }
     public RelayCommand SelectCategoryCommand { get; }
@@ -119,6 +125,10 @@ public sealed class MainViewModel : ViewModelBase
         SortAppsCommand = new RelayCommand(p => SortApps(p as string ?? "name"));
         ScanRegistryCommand = new RelayCommand(async () => await ScanRegistryAsync(), () => !RegBusy);
         FixRegistryCommand = new RelayCommand(async () => await FixRegistryAsync(), () => !RegBusy && RegIssues.Count > 0);
+        RestoreBackupCommand = new RelayCommand(async () => await RestoreBackupAsync(), () => SelectedBackup != null);
+        DeleteBackupCommand = new RelayCommand(DeleteBackup, () => SelectedBackup != null);
+        OpenBackupFolderCommand = new RelayCommand(OpenBackupFolder);
+        RefreshBackupsCommand = new RelayCommand(RefreshBackups);
 
 
         AppsView = CollectionViewSource.GetDefaultView(Apps);
@@ -156,6 +166,9 @@ public sealed class MainViewModel : ViewModelBase
         ExportReportCommand = new RelayCommand(ExportReport);
         CheckUpdatesCommand = new RelayCommand(async () => await CheckUpdatesAsync(true), () => !UpdateBusy);
         OpenReleaseCommand = new RelayCommand(OpenRelease, () => !UpdateBusy);
+        ShowWhatsNewCommand = new RelayCommand(async () => await ShowWhatsNewAsync(true));
+        CloseWhatsNewCommand = new RelayCommand(() => ShowWhatsNew = false);
+        OpenWhatsNewPageCommand = new RelayCommand(OpenWhatsNewPage);
         ScanDeletedCommand = new RelayCommand(async () => await ScanDeletedAsync(), () => !RecoveryBusy);
         RecoverSelectedCommand = new RelayCommand(async () => await RecoverSelectedAsync(), () => !RecoveryBusy);
         SelectCategoryCommand = new RelayCommand(p => SelectCategory(p as string ?? "all"));
@@ -170,7 +183,6 @@ public sealed class MainViewModel : ViewModelBase
 
         AnalyzeCommand = new RelayCommand(async () => await AnalyzeAsync(), () => !FilesBusy);
         BrowseFolderCommand = new RelayCommand(BrowseFolder, () => !FilesBusy);
-        OpenFileCommand = new RelayCommand(OpenSelectedFile, () => SelectedFile != null);
         MapUpCommand = new RelayCommand(() => { if (MapRoot?.Parent is { } p) MapRoot = p; },
             () => MapRoot?.Parent != null);
         LoadDrives();
@@ -258,9 +270,51 @@ public sealed class MainViewModel : ViewModelBase
             null, MaintenanceService.DefragRun,
             "mnt_st_defrag_check", "mnt_st_defrag_run", "mnt_done",
             customAnalyze: DefragService.AnalyzeAll));
-        MaintenanceTasks.Add(new MaintenanceTaskVm("🧠", "mnt_ram", "mnt_ram_d",
+        _ramTask = new MaintenanceTaskVm("🧠", "mnt_ram", "mnt_ram_d",
             null, MaintenanceService.SfcRun /*не используется*/,
-            "", "", "mnt_done", launchOnly: true));
+            "", "", "mnt_done", launchOnly: true);
+        MaintenanceTasks.Add(_ramTask);
+    }
+
+    // ---------- итог последнего теста памяти (из журнала Windows) ----------
+    private MaintenanceTaskVm? _ramTask;
+    private MemTestResult? _memTest;
+    private bool _memTestRead;
+    private bool _maintLoaded;
+
+    public void EnsureMaintenanceLoaded()
+    {
+        if (_maintLoaded) return;
+        _maintLoaded = true;
+        _ = LoadMemTestAsync();
+    }
+
+    private async Task LoadMemTestAsync()
+    {
+        _memTest = await Task.Run(MaintenanceService.GetLastMemoryTest);
+        _memTestRead = true;
+        UpdateMemTestInfo();
+    }
+
+    private void UpdateMemTestInfo()
+    {
+        if (!_memTestRead || _ramTask == null) return;
+        if (_memTest is not { } r)
+        {
+            _ramTask.SetInfo(Loc.I["mt_none"], FrozenBrush(0x8C, 0x8C, 0x96));
+            return;
+        }
+
+        string date = r.When.ToString("d MMMM yyyy",
+            System.Globalization.CultureInfo.GetCultureInfo(Loc.I.IsEn ? "en-US" : "ru-RU"));
+        var (key, brush) = r.Outcome switch
+        {
+            MemTestOutcome.NoErrors => ("mt_ok", FrozenBrush(0x3D, 0xD6, 0x8C)),
+            MemTestOutcome.Errors => ("mt_err", FrozenBrush(0xE5, 0x48, 0x4D)),
+            MemTestOutcome.Interrupted => ("mt_int", FrozenBrush(0xDD, 0xB4, 0x4B)),
+            _ => ("mt_fail", FrozenBrush(0xDD, 0xB4, 0x4B)),
+        };
+        _ramTask.SetInfo(string.Format(Loc.I[key], date), brush);
     }
 
     // ---------- Профили оптимизации ----------
@@ -564,6 +618,40 @@ public sealed class MainViewModel : ViewModelBase
         try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(_releaseUrl) { UseShellExecute = true }); } catch { }
     }
 
+    // ---------- «Что нового» ----------
+    public ObservableCollection<string> WhatsNewItems { get; } = new();
+
+    private bool _showWhatsNew;
+    public bool ShowWhatsNew { get => _showWhatsNew; private set => Set(ref _showWhatsNew, value); }
+
+    private string _whatsNewTitle = "";
+    public string WhatsNewTitle { get => _whatsNewTitle; private set => Set(ref _whatsNewTitle, value); }
+
+    private string _whatsNewUrl = "";
+
+    /// <param name="manual">по кнопке в «О программе» - при ошибке сказать об этом; после обновления - молча</param>
+    public async Task ShowWhatsNewAsync(bool manual)
+    {
+        string ver = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "";
+        var notes = await UpdateService.GetNotesAsync(ver);
+        if (notes is null)
+        {
+            if (manual) ToastService.Warn(Loc.I["wn_fail"]);
+            return;
+        }
+        WhatsNewItems.Clear();
+        foreach (var i in notes.Items) WhatsNewItems.Add(i);
+        WhatsNewTitle = string.Format(Loc.I["wn_title"], ver);
+        _whatsNewUrl = notes.Url;
+        ShowWhatsNew = true;
+    }
+
+    private void OpenWhatsNewPage()
+    {
+        if (string.IsNullOrEmpty(_whatsNewUrl)) return;
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(_whatsNewUrl) { UseShellExecute = true }); } catch { }
+    }
+
     private async Task InstallUpdateAsync()
     {
         var ok = System.Windows.MessageBox.Show(string.Format(Loc.I["upd_confirm"], _updInfo.LatestVersion), "NakClean",
@@ -803,9 +891,12 @@ public sealed class MainViewModel : ViewModelBase
 
         // реестр: галочки категорий
         foreach (var r in RegOptions) r.RaiseLocalized();
+        foreach (var b in RegBackups) b.RaiseLocalized();
+        BackupNote = Loc.I["rb_note"];
 
         // обслуживание: названия/описания карточек
         foreach (var m in MaintenanceTasks) m.RaiseLocalized();
+        UpdateMemTestInfo();
 
         // запуск: колонка «Вкл» (Да/Нет), задачи, службы, контекстное меню
         foreach (var s in StartupEntries) s.RaiseLocalized();
@@ -1393,6 +1484,7 @@ public sealed class MainViewModel : ViewModelBase
             });
 
             foreach (var vm in selected) RegIssues.Remove(vm);
+            RefreshBackups();
             RegNote = string.Format(Loc.I["reg_removed"], del)
                       + (fail > 0 ? string.Format(Loc.I["reg_failed"], fail) : "")
                       + Loc.I["reg_backup_saved"];
@@ -1407,6 +1499,75 @@ public sealed class MainViewModel : ViewModelBase
             RegBusy = false;
             FixRegistryCommand.RaiseCanExecuteChanged();
         }
+    }
+
+    // ---------- Резервные копии реестра ----------
+    public ObservableCollection<RegBackupVm> RegBackups { get; } = new();
+
+    private RegBackupVm? _selectedBackup;
+    public RegBackupVm? SelectedBackup
+    {
+        get => _selectedBackup;
+        set { if (Set(ref _selectedBackup, value)) { RestoreBackupCommand.RaiseCanExecuteChanged(); DeleteBackupCommand.RaiseCanExecuteChanged(); } }
+    }
+
+    public bool HasBackups => RegBackups.Count > 0;
+    public bool NoBackups => RegBackups.Count == 0;
+
+    private string _backupNote = Loc.I["rb_note"];
+    public string BackupNote { get => _backupNote; private set => Set(ref _backupNote, value); }
+
+    public void RefreshBackups()
+    {
+        RegBackups.Clear();
+        foreach (var b in RegistryFixService.ListBackups()) RegBackups.Add(new RegBackupVm(b));
+        SelectedBackup = null;
+        OnPropertyChanged(nameof(HasBackups));
+        OnPropertyChanged(nameof(NoBackups));
+    }
+
+    private async Task RestoreBackupAsync()
+    {
+        var sel = SelectedBackup;
+        if (sel is null) return;
+        if (System.Windows.MessageBox.Show(
+                string.Format(Loc.I["rb_restore_q"], sel.WhenText),
+                "NakClean", System.Windows.MessageBoxButton.YesNo,
+                System.Windows.MessageBoxImage.Question) != System.Windows.MessageBoxResult.Yes)
+            return;
+
+        bool ok = await Task.Run(() => RegistryFixService.Restore(sel.Backup.Path));
+        BackupNote = string.Format(Loc.I[ok ? "rb_restored" : "rb_restore_fail"], sel.WhenText);
+        if (ok) ToastService.Ok(BackupNote); else ToastService.Error(BackupNote);
+    }
+
+    private void DeleteBackup()
+    {
+        var sel = SelectedBackup;
+        if (sel is null) return;
+        if (System.Windows.MessageBox.Show(
+                string.Format(Loc.I["rb_del_q"], sel.WhenText),
+                "NakClean", System.Windows.MessageBoxButton.YesNo,
+                System.Windows.MessageBoxImage.Question) != System.Windows.MessageBoxResult.Yes)
+            return;
+
+        if (DuplicateService.DeleteToRecycle(sel.Backup.Path))
+        {
+            RegBackups.Remove(sel);
+            OnPropertyChanged(nameof(HasBackups));
+            OnPropertyChanged(nameof(NoBackups));
+            BackupNote = string.Format(Loc.I["rb_deleted"], sel.WhenText);
+        }
+    }
+
+    private void OpenBackupFolder()
+    {
+        try
+        {
+            System.IO.Directory.CreateDirectory(RegistryFixService.BackupDir);
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(RegistryFixService.BackupDir) { UseShellExecute = true });
+        }
+        catch { }
     }
 
     // ---------- Запланированные задачи ----------
@@ -1707,7 +1868,7 @@ public sealed class MainViewModel : ViewModelBase
     public IReadOnlyList<FileRowVm> FilesList { get => _filesList; private set => Set(ref _filesList, value); }
 
     private FileRowVm? _selectedFile;
-    public FileRowVm? SelectedFile { get => _selectedFile; set { if (Set(ref _selectedFile, value)) OpenFileCommand.RaiseCanExecuteChanged(); } }
+    public FileRowVm? SelectedFile { get => _selectedFile; set => Set(ref _selectedFile, value); }
 
     private void LoadDrives()
     {
@@ -1760,6 +1921,10 @@ public sealed class MainViewModel : ViewModelBase
             });
 
             _scanTotalSize = res.TotalSize <= 0 ? 1 : res.TotalSize;
+            _scanRoot = res.Root;
+            _scanExts = res.Extensions;
+            _scanTotalAlloc = res.TotalAlloc;
+            _scanFileCount = res.FileCount;
 
             var rootRow = new TreeRowVm(new Child(res.Root), 0, _scanTotalSize, ToggleRow);
             TreeRows.Add(rootRow);
@@ -1819,11 +1984,150 @@ public sealed class MainViewModel : ViewModelBase
         }
     }
 
-    private void OpenSelectedFile()
+    // ---------- удаление в корзину из «Поиска файлов» ----------
+    private TreeNode? _scanRoot;
+    private List<ExtStat> _scanExts = new();
+    private long _scanTotalAlloc;
+    private int _scanFileCount;
+
+    public void DeleteToRecycle(string path, IntPtr owner)
     {
-        var sel = SelectedFile;
-        if (sel is null) return;
-        try { System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{sel.Path}\""); } catch { }
+        string name = System.IO.Path.GetFileName(path.TrimEnd('\\'));
+        if (RecycleBin.IsProtected(path))
+        {
+            System.Windows.MessageBox.Show(string.Format(Loc.I["fs_del_protected"], name), "NakClean",
+                System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
+            return;
+        }
+
+        // что удаляем - для честного вопроса (размер, сколько файлов внутри)
+        var (owner0, node) = LocateInScan(path);
+        bool isFolder = System.IO.Directory.Exists(path);
+        string question;
+        if (isFolder)
+        {
+            question = node != null
+                ? string.Format(Loc.I["fs_del_q_folder"], name, node.FileCount.ToString("N0"), Format.Bytes(node.Size))
+                : string.Format(Loc.I["fs_del_q_folder_simple"], name);
+        }
+        else
+        {
+            long size = 0;
+            try { size = new System.IO.FileInfo(path).Length; } catch { }
+            question = string.Format(Loc.I["fs_del_q_file"], name, Format.Bytes(size));
+        }
+
+        if (System.Windows.MessageBox.Show(question, "NakClean", System.Windows.MessageBoxButton.YesNo,
+                System.Windows.MessageBoxImage.Question) != System.Windows.MessageBoxResult.Yes)
+            return;
+
+        switch (RecycleBin.Move(path, owner))
+        {
+            case RecycleBin.Result.Cancelled:
+                return;
+            case RecycleBin.Result.Failed:
+                ScanStatus = string.Format(Loc.I["fs_del_fail"], name);
+                ToastService.Error(ScanStatus);
+                return;
+        }
+
+        RemoveFromScan(path, owner0);
+        ScanStatus = string.Format(Loc.I["fs_del_done"], name);
+        ToastService.Ok(string.Format(Loc.I["fs_del_toast"], name));
+    }
+
+    /// <summary>Найти в результате анализа папку-владельца и (если это папка) сам узел.</summary>
+    private (TreeNode? Owner, TreeNode? Node) LocateInScan(string path)
+    {
+        if (_scanRoot is null) return (null, null);
+        string rootPath = _scanRoot.FullPath.TrimEnd('\\');
+        string full = path.TrimEnd('\\');
+        if (!full.StartsWith(rootPath + "\\", StringComparison.OrdinalIgnoreCase)) return (null, null);
+
+        var segs = full[(rootPath.Length + 1)..].Split('\\');
+        var n = _scanRoot;
+        for (int i = 0; i < segs.Length - 1; i++)
+        {
+            n = n.FindSub(segs[i]);
+            if (n is null) return (null, null);
+        }
+        return (n, n.FindSub(segs[^1]));
+    }
+
+    /// <summary>Убрать удалённое из дерева, типов файлов, списка файлов и карты - без повторного анализа.</summary>
+    private void RemoveFromScan(string path, TreeNode? owner)
+    {
+        string full = path.TrimEnd('\\');
+        string name = System.IO.Path.GetFileName(full);
+        var folder = owner?.FindSub(name);
+
+        // типы файлов: вычесть всё, что было внутри
+        if (folder != null) SubtractExts(folder);
+        else
+        {
+            var fe = owner?.Files?.FirstOrDefault(x => string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase));
+            if (fe is { Name: not null } f) SubtractExt(f.Name, f.Size, f.Alloc);
+        }
+
+        var removed = owner?.RemoveChild(name);
+        if (removed is { } r)
+        {
+            _scanTotalSize = Math.Max(1, _scanTotalSize - r.Size);
+            _scanTotalAlloc -= r.Alloc;
+            _scanFileCount -= r.Files;
+        }
+
+        // строки дерева: сама строка + всё раскрытое под ней
+        for (int i = 0; i < TreeRows.Count; i++)
+        {
+            if (!string.Equals(TreeRows[i].FullPath.TrimEnd('\\'), full, StringComparison.OrdinalIgnoreCase)) continue;
+            int depth = TreeRows[i].Depth;
+            TreeRows.RemoveAt(i);
+            while (i < TreeRows.Count && TreeRows[i].Depth > depth) TreeRows.RemoveAt(i);
+            break;
+        }
+        foreach (var row in TreeRows) row.Refresh(_scanTotalSize);
+
+        // плоский список файлов
+        string prefix = full + "\\";
+        FilesList = FilesList.Where(f => !string.Equals(f.Path, full, StringComparison.OrdinalIgnoreCase)
+                                          && !f.Path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToList();
+        SelectedFile = null;
+
+        // типы файлов - пересобрать панель
+        _scanExts = _scanExts.Where(e => e.Files > 0).OrderByDescending(e => e.Size).ToList();
+        Extensions.Clear();
+        int k = 0;
+        foreach (var e in _scanExts) Extensions.Add(new ExtRowVm(e, _scanTotalSize, k++));
+
+        if (_scanRoot != null)
+            ScanStats = string.Format(Loc.I["fs_stats"], _scanFileCount.ToString("N0"), Format.Bytes(_scanRoot.Size), Format.Bytes(_scanTotalAlloc));
+
+        // карта: если открыта удалённая папка (или внутри неё) - подняться к родителю; перерисовать
+        var map = MapRoot;
+        if (map != null && folder != null)
+            for (var n = map; n != null; n = n.Parent)
+                if (ReferenceEquals(n, folder)) { map = folder.Parent; break; }
+        MapRoot = null;
+        MapRoot = map;
+    }
+
+    private void SubtractExts(TreeNode folder)
+    {
+        if (folder.Files != null) foreach (var f in folder.Files) SubtractExt(f.Name, f.Size, f.Alloc);
+        if (folder.Sub != null) foreach (var s in folder.Sub.Values) SubtractExts(s);
+    }
+
+    private void SubtractExt(string fileName, long size, long alloc)
+    {
+        // так же, как при анализе (FileScanService): расширение в нижнем регистре или «без расширения»
+        string ext = System.IO.Path.GetExtension(fileName);
+        ext = string.IsNullOrEmpty(ext) ? Loc.I["fs_noext"] : ext.ToLowerInvariant();
+        var es = _scanExts.FirstOrDefault(e => string.Equals(e.Ext, ext, StringComparison.OrdinalIgnoreCase));
+        if (es is null) return;
+        es.Size -= size;
+        es.Alloc -= alloc;
+        es.Files--;
     }
 
     /// <summary>Разворачивает дерево до узла по полному пути и возвращает его строку (для выделения).</summary>

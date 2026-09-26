@@ -144,7 +144,10 @@ public static class StartupService
         catch { return false; }
     }
 
-    /// <summary>Полностью удаляет запись автозагрузки. true = успех.</summary>
+    /// <summary>
+    /// Удаляет запись автозагрузки. Из реестра - только после резервной копии (без копии не удаляем),
+    /// ярлык из папки «Автозагрузка» - в корзину. true = успех.
+    /// </summary>
     public static bool Delete(StartupEntry e)
     {
         try
@@ -152,19 +155,26 @@ public static class StartupService
             if (e.IsRegistry)
             {
                 var (hive, view) = RunTarget(e);
+                var (ahive, aview, apath) = ApprovedTarget(e);
+                // сама команда + отметка вкл/выкл: после восстановления запись вернётся в том же состоянии
+                RegistryFixService.BackupValues(new[]
+                {
+                    (hive, view, RunPath, e.ValueName),
+                    (ahive, aview, apath, e.ValueName),
+                }, "startup", 1);
+
                 using var baseKey = RegistryKey.OpenBaseKey(hive, view);
                 using var run = baseKey.OpenSubKey(RunPath, writable: true);
                 run?.DeleteValue(e.ValueName, throwOnMissingValue: false);
 
                 // подчистим запись в StartupApproved
-                var (ahive, aview, apath) = ApprovedTarget(e);
                 using var aBase = RegistryKey.OpenBaseKey(ahive, aview);
                 using var approved = aBase.OpenSubKey(apath, writable: true);
                 approved?.DeleteValue(e.ValueName, throwOnMissingValue: false);
             }
-            else
+            else if (File.Exists(e.LnkPath))
             {
-                if (File.Exists(e.LnkPath)) File.Delete(e.LnkPath);
+                return DuplicateService.DeleteToRecycle(e.LnkPath);   // ярлык можно вернуть из корзины
             }
             return true;
         }

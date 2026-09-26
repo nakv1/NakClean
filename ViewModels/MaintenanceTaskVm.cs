@@ -111,6 +111,20 @@ public sealed class MaintenanceTaskVm : ViewModelBase
     }
     public bool HasStatus => !string.IsNullOrEmpty(_status);
 
+    // постоянная строка-сведение под описанием (например, итог последнего теста памяти)
+    private string _info = "";
+    public string Info { get => _info; private set { if (Set(ref _info, value)) OnPropertyChanged(nameof(HasInfo)); } }
+    public bool HasInfo => !string.IsNullOrEmpty(_info);
+
+    private System.Windows.Media.Brush? _infoBrush;
+    public System.Windows.Media.Brush? InfoBrush { get => _infoBrush; private set => Set(ref _infoBrush, value); }
+
+    public void SetInfo(string text, System.Windows.Media.Brush brush)
+    {
+        InfoBrush = brush;
+        Info = text;
+    }
+
     public void RaiseLocalized()
     {
         OnPropertyChanged(nameof(Title));

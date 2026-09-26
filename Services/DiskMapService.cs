@@ -16,6 +16,10 @@ public readonly struct FileEntry
 public sealed class TreeNode
 {
     public required string Name { get; init; }
+
+    /// <summary>Найти подпапку по имени (без учёта регистра).</summary>
+    public TreeNode? FindSub(string name)
+        => Sub != null && Sub.TryGetValue(name, out var n) ? n : null;   // словарь уже без учёта регистра
     public TreeNode? Parent { get; init; }
 
     public Dictionary<string, TreeNode>? Sub;  // подпапки
@@ -42,6 +46,35 @@ public sealed class TreeNode
         list.Sort(static (a, b) => b.Size.CompareTo(a.Size));
         _sorted = list;
         return list;
+    }
+
+    /// <summary>
+    /// Убрать из дерева удалённую подпапку или файл и вычесть их размер из всех родителей.
+    /// Возвращает (размер, на диске, файлов) удалённого - или null, если такого нет.
+    /// </summary>
+    public (long Size, long Alloc, int Files)? RemoveChild(string name)
+    {
+        long s, a;
+        int f;
+        if (Sub != null && Sub.Remove(name, out var folder))
+        {
+            s = folder.Size; a = folder.Alloc; f = folder.FileCount;
+        }
+        else
+        {
+            int i = Files?.FindIndex(x => string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase)) ?? -1;
+            if (i < 0) return null;
+            var fe = Files![i];
+            Files.RemoveAt(i);
+            s = fe.Size; a = fe.Alloc; f = 1;
+        }
+
+        for (var n = this; n != null; n = n.Parent)
+        {
+            n.Size -= s; n.Alloc -= a; n.FileCount -= f;
+            n._sorted = null;                // порядок детей мог измениться - пересоберётся при раскрытии
+        }
+        return (s, a, f);
     }
 }
 

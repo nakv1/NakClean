@@ -189,12 +189,22 @@ public static class InstalledAppsService
         catch { return false; }
     }
 
-    /// <summary>Удаляет запись из списка (ключ Uninstall). Программа НЕ удаляется.</summary>
+    /// <summary>Удаляет запись из списка (ключ Uninstall) - только после резервной копии. Программа НЕ удаляется.</summary>
     public static bool RemoveEntry(InstalledApp app)
     {
         if (app.IsUwp || string.IsNullOrEmpty(app.SubKey)) return false;
         try
         {
+            RegistryFixService.Backup(new[]
+            {
+                new RegistryIssue
+                {
+                    Category = "uninstall", Problem = "", Target = app.Name,
+                    Hive = app.Hive,
+                    SubKey = RegistryFixService.RealSubKey(app.Hive, app.View, app.SubKey),
+                },
+            }, "uninstall", requireData: true);
+
             using var baseKey = RegistryKey.OpenBaseKey(app.Hive, app.View);
             int slash = app.SubKey.LastIndexOf('\\');
             string parent = slash > 0 ? app.SubKey[..slash] : "";

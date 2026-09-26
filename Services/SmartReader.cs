@@ -3,12 +3,9 @@ using System.Runtime.InteropServices;
 namespace NakClean.Services;
 
 /// <summary>
-/// Чтение SMART напрямую с физического диска через DeviceIoControl -
-/// как это делает CrystalDiskInfo. Сейчас реализован NVMe (журнал
-/// SMART/Health). Требует прав администратора (доступ к \\.\PhysicalDriveN).
-///
-/// ATA/SATA pass-through пока не реализован - для SATA вернёт null
-/// (данные возьмутся из WMI-счётчика надёжности, если он их отдаёт).
+/// Чтение SMART напрямую с физического диска через DeviceIoControl - как это делает CrystalDiskInfo:
+/// NVMe (журнал SMART/Health) и ATA/SATA (SMART READ DATA, двумя способами).
+/// Требует прав администратора (доступ к \\.\PhysicalDriveN), без них вернёт null.
 /// </summary>
 public static class SmartReader
 {
