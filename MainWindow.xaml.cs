@@ -31,7 +31,13 @@ public partial class MainWindow : Window
         // живой опрос только на «Обзоре» и когда окно не свёрнуто
         NavDash.Checked += (_, _) => UpdateLiveActive();
         NavDash.Unchecked += (_, _) => UpdateLiveActive();
-        StateChanged += (_, _) => UpdateLiveActive();
+        StateChanged += (_, _) =>
+        {
+            UpdateLiveActive();
+            // свернули - отдаём системе память, которая держится про запас (окно не видно, пауза незаметна)
+            if (WindowState == WindowState.Minimized)
+                Dispatcher.BeginInvoke(MainViewModel.ReleaseMemory, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+        };
 
         // ленивая загрузка данных вкладок при первом открытии
         NavCheck.Checked += (_, _) => Vm?.EnsureHealthLoaded();
@@ -184,6 +190,22 @@ public partial class MainWindow : Window
         _hwnd = new WindowInteropHelper(this).Handle;
         ApplyDarkTitleBar();
         ApplySurfaces();
+        HwndSource.FromHwnd(_hwnd)?.AddHook(WndProc);
+    }
+
+    // вторая копия просит показаться - выходим на передний план
+    private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if ((uint)msg == SingleInstance.ShowMessage)
+        {
+            if (!IsVisible) Show();
+            if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+            Activate();
+            Topmost = true;     // надёжно поднять поверх других окон
+            Topmost = false;
+            handled = true;
+        }
+        return IntPtr.Zero;
     }
 
     // ---------- Тема (тёмная / светлая) ----------

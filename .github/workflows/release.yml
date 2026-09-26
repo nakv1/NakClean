@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Check version matches tag
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}".TrimStart('v')
+          $ver = ([xml](Get-Content NakClean.csproj)).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
+          if ($tag -ne $ver) { throw "Tag v$tag does not match <Version>$ver</Version> in NakClean.csproj" }
+
+      - name: Build portable
+        shell: pwsh
+        run: |
+          dotnet publish NakClean.csproj -c Release -r win-x64 --self-contained true `
+            -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true -o publish
+          (Get-FileHash publish/NakClean.exe -Algorithm SHA256).Hash | Out-File -Encoding ascii -NoNewline publish/NakClean.exe.sha256
+
+      - name: Release notes
+        shell: pwsh
+        run: |
+          $prev = git describe --tags --abbrev=0 "${{ github.ref_name }}^" 2>$null
+          $range = if ($prev) { "$prev..${{ github.ref_name }}" } else { "${{ github.ref_name }}" }
+          $lines = git log $range --no-merges --pretty="- %s"
+          $hash = Get-Content publish/NakClean.exe.sha256
+          @("## Что нового", "", $lines, "", "SHA256: ``$hash``") | Out-File -Encoding utf8 notes.md
+
+      - name: Publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" publish/NakClean.exe publish/NakClean.exe.sha256 `
+            --title "NakClean ${{ github.ref_name }}" --notes-file notes.md

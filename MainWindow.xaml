@@ -1575,7 +1575,7 @@
                                     Margin="0,10,0,0" HorizontalAlignment="Center" Command="{Binding CheckUpdatesCommand}"/>
                             <TextBlock Text="{Binding UpdateNote}" FontSize="12" Foreground="{DynamicResource MutedBrush}"
                                        HorizontalAlignment="Center" TextAlignment="Center" Margin="0,8,0,0" TextWrapping="Wrap"/>
-                            <Button Content="{Binding [upd_download], Source={x:Static loc:Loc.I}}" Style="{StaticResource AccentButton}"
+                            <Button Content="{Binding UpdateButtonText}" Style="{StaticResource AccentButton}"
                                     Margin="0,10,0,0" HorizontalAlignment="Center" Command="{Binding OpenReleaseCommand}"
                                     Visibility="{Binding HasUpdate, Converter={StaticResource BoolVis}}"/>
 

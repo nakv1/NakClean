@@ -10,7 +10,7 @@
     <AssemblyName>NakClean</AssemblyName>
     <RootNamespace>NakClean</RootNamespace>
     <ApplicationIcon>icon.ico</ApplicationIcon>
-    <Version>1.5.5</Version>
+    <Version>1.6.0</Version>
     <Company>nak</Company>
     <Authors>nak</Authors>
     <Product>NakClean</Product>
@@ -32,6 +32,11 @@
 
   <ItemGroup>
     <Resource Include="icon.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Сборщик мусора чаще уплотняет память, а не раздувает кучу (0 - выкл, 9 - максимум) -->
+    <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="5" />
   </ItemGroup>
 
 </Project>

@@ -23,6 +23,26 @@ public partial class App : Application
         };
     }
 
+    protected override void OnStartup(StartupEventArgs e)
+    {
+        base.OnStartup(e);
+
+        bool afterUpdate = e.Args.Contains(NakClean.Services.UpdateService.UpdatedArg);
+        if (!NakClean.Services.SingleInstance.Acquire(afterUpdate))
+        {
+            NakClean.Services.SingleInstance.ActivateFirst();
+            Shutdown();
+            return;
+        }
+        new MainWindow().Show();
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        NakClean.Services.SingleInstance.Release();
+        base.OnExit(e);
+    }
+
     private void OnDispatcherException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
         Log("Dispatcher", e.Exception);

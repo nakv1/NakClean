@@ -154,8 +154,8 @@ public sealed class MainViewModel : ViewModelBase
         RefreshBatteryCommand = new RelayCommand(async () => await LoadBatteryAsync());
         RefreshBootCommand = new RelayCommand(async () => await LoadBootAsync());
         ExportReportCommand = new RelayCommand(ExportReport);
-        CheckUpdatesCommand = new RelayCommand(async () => await CheckUpdatesAsync(true));
-        OpenReleaseCommand = new RelayCommand(OpenRelease);
+        CheckUpdatesCommand = new RelayCommand(async () => await CheckUpdatesAsync(true), () => !UpdateBusy);
+        OpenReleaseCommand = new RelayCommand(OpenRelease, () => !UpdateBusy);
         ScanDeletedCommand = new RelayCommand(async () => await ScanDeletedAsync(), () => !RecoveryBusy);
         RecoverSelectedCommand = new RelayCommand(async () => await RecoverSelectedAsync(), () => !RecoveryBusy);
         SelectCategoryCommand = new RelayCommand(p => SelectCategory(p as string ?? "all"));
@@ -182,6 +182,9 @@ public sealed class MainViewModel : ViewModelBase
         RefreshDisks();
         _ = LoadSystemInfoAsync();
         _ = CheckUpdatesAsync(false);   // тихая проверка обновлений в фоне
+        UpdateService.CleanupOld();
+        if (Environment.GetCommandLineArgs().Contains(UpdateService.UpdatedArg))
+            ToastService.Ok(string.Format(Loc.I["upd_done"], AppVersionShort));
         Loc.I.PropertyChanged += (_, _) => OnLanguageChanged();
         Native.GetCpuUsage(); // первый замер-«нулёвка» для CPU
 
@@ -511,6 +514,20 @@ public sealed class MainViewModel : ViewModelBase
 
     private string _releaseUrl = "";
     private bool _updChecking;
+    private UpdateInfo _updInfo;
+
+    private bool _updBusy;
+    public bool UpdateBusy
+    {
+        get => _updBusy;
+        private set { if (Set(ref _updBusy, value)) { OpenReleaseCommand.RaiseCanExecuteChanged(); CheckUpdatesCommand.RaiseCanExecuteChanged(); } }
+    }
+
+    private bool CanInstallUpdate =>
+        UpdateService.CanSelfUpdate && _updInfo.ExeUrl.Length > 0 && _updInfo.ShaUrl.Length > 0;
+
+    /// <summary>Портабл обновляется сам ("Обновить сейчас"), обычная сборка открывает страницу релиза.</summary>
+    public string UpdateButtonText => Loc.I[CanInstallUpdate ? "upd_install" : "upd_download"];
 
     private async Task CheckUpdatesAsync(bool manual)
     {
@@ -526,6 +543,8 @@ public sealed class MainViewModel : ViewModelBase
             {
                 HasUpdate = true;
                 _releaseUrl = info.Url;
+                _updInfo = info;
+                OnPropertyChanged(nameof(UpdateButtonText));
                 UpdateNote = string.Format(Loc.I["upd_available"], info.LatestVersion);
                 ToastService.Info(string.Format(Loc.I["upd_available"], info.LatestVersion));
             }
@@ -538,10 +557,41 @@ public sealed class MainViewModel : ViewModelBase
         finally { _updChecking = false; }
     }
 
-    private void OpenRelease()
+    private async void OpenRelease()
     {
+        if (CanInstallUpdate) { await InstallUpdateAsync(); return; }
         if (string.IsNullOrEmpty(_releaseUrl)) return;
         try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(_releaseUrl) { UseShellExecute = true }); } catch { }
+    }
+
+    private async Task InstallUpdateAsync()
+    {
+        var ok = System.Windows.MessageBox.Show(string.Format(Loc.I["upd_confirm"], _updInfo.LatestVersion), "NakClean",
+                                 System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Question);
+        if (ok != System.Windows.MessageBoxResult.Yes) return;
+
+        UpdateBusy = true;
+        try
+        {
+            var progress = new Progress<int>(p =>
+                UpdateNote = p >= 0 ? string.Format(Loc.I["upd_downloading"], p) : Loc.I["upd_downloading_nopct"]);
+            await UpdateService.InstallAsync(_updInfo, progress);
+
+            UpdateNote = Loc.I["upd_restarting"];
+            UpdateService.Restart();
+            System.Windows.Application.Current.Shutdown();
+        }
+        catch (System.IO.InvalidDataException)
+        {
+            UpdateNote = Loc.I["upd_badfile"];
+            ToastService.Error(Loc.I["upd_badfile"]);
+        }
+        catch (Exception ex)
+        {
+            UpdateNote = string.Format(Loc.I["upd_error"], ex.Message);
+            ToastService.Error(UpdateNote);
+        }
+        finally { UpdateBusy = false; }
     }
 
     // ---------- Восстановление удалённых файлов ----------
@@ -628,7 +678,11 @@ public sealed class MainViewModel : ViewModelBase
                 : string.Format(Loc.I["rec_found"], Recovered.Count);
         }
         catch (Exception ex) { RecoveryNote = string.Format(Loc.I["err"], ex.Message); }
-        finally { RecoveryBusy = false; }
+        finally
+        {
+            RecoveryBusy = false;
+            ReleaseMemory();   // весь список удалённых из MFT больше не нужен - на экране только топ-5000
+        }
     }
 
     private async Task RecoverSelectedAsync()
@@ -769,6 +823,7 @@ public sealed class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(AppTagline));
         OnPropertyChanged(nameof(AppVersionText));
         OnPropertyChanged(nameof(AppAuthor));
+        OnPropertyChanged(nameof(UpdateButtonText));
 
         // подписи-подсказки по умолчанию
         Status = Loc.I["note_status"];
@@ -1726,12 +1781,19 @@ public sealed class MainViewModel : ViewModelBase
         finally
         {
             FilesBusy = false;
-            // вернуть ОС большие временные буферы скана (MFT, списки путей) -
-            // иначе .NET держит их в рабочем наборе и в Диспетчере задач видно много памяти
-            System.Runtime.GCSettings.LargeObjectHeapCompactionMode =
-                System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
-            GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
+            ReleaseMemory();
         }
+    }
+
+    /// <summary>
+    /// Вернуть ОС память, которую .NET держит про запас после тяжёлых операций (буферы MFT, списки путей).
+    /// Живые данные не трогаются - освобождается только уже ненужное.
+    /// </summary>
+    public static void ReleaseMemory()
+    {
+        System.Runtime.GCSettings.LargeObjectHeapCompactionMode =
+            System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
+        GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
     }
 
     // разворот/сворачивание строки в плоском дереве (как в WizTree)
