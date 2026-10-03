@@ -372,17 +372,31 @@
                 <Grid Visibility="{Binding IsChecked, ElementName=NavClean, Converter={StaticResource BoolVis}}">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Text="{Binding [hdr_clean], Source={x:Static loc:Loc.I}}" FontSize="22" FontWeight="Bold" Margin="6,4,0,6"/>
+
+                    <!-- Под-вкладки -->
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="6,0,0,8">
+                        <RadioButton x:Name="ClTabNormal" Content="{Binding [cl_tab_normal], Source={x:Static loc:Loc.I}}" Style="{StaticResource NavButton}" GroupName="clsub" IsChecked="True"/>
+                        <RadioButton x:Name="ClTabDeep" Content="{Binding [cl_tab_deep], Source={x:Static loc:Loc.I}}" Style="{StaticResource NavButton}" GroupName="clsub"/>
+                    </StackPanel>
+
+                    <!-- ===== Под-вкладка: Очистка (освобождение места) ===== -->
+                    <Grid Grid.Row="2" Visibility="{Binding IsChecked, ElementName=ClTabNormal, Converter={StaticResource BoolVis}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
                     <!-- Шапка -->
-                    <Grid Grid.Row="0" Margin="6,4,6,8">
+                    <Grid Grid.Row="0" Margin="6,0,6,8">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                        <StackPanel Margin="0,0,16,0">
-                            <TextBlock Text="{Binding [hdr_clean], Source={x:Static loc:Loc.I}}" FontSize="22" FontWeight="Bold"/>
-                            <TextBlock Text="{Binding Status}" Foreground="{DynamicResource MutedBrush}" Margin="0,4,0,0" TextWrapping="Wrap"/>
-                        </StackPanel>
+                        <TextBlock Text="{Binding Status}" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center"
+                                   Margin="0,0,16,0" TextWrapping="Wrap"/>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
                             <Button Content="{Binding [btn_select_all], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Margin="0,0,8,0"
                                     Command="{Binding SelectAllCommand}"/>
@@ -467,6 +481,85 @@
                             </StackPanel>
                         </Grid>
                     </Border>
+                    </Grid>
+
+                    <!-- ===== Под-вкладка: Глубокая очистка (приватность) ===== -->
+                    <Grid Grid.Row="2" Visibility="{Binding IsChecked, ElementName=ClTabDeep, Converter={StaticResource BoolVis}}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Пояснение + честная оговорка -->
+                        <Border Grid.Row="0" Style="{StaticResource Card}" Margin="6,0,6,8" Padding="16,12">
+                            <StackPanel>
+                                <TextBlock Text="{Binding [deep_intro], Source={x:Static loc:Loc.I}}" FontSize="13"
+                                           Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                    <TextBlock Text="🔒" FontSize="13" Margin="0,0,6,0"/>
+                                    <TextBlock Text="{Binding [deep_ssd], Source={x:Static loc:Loc.I}}" FontSize="12"
+                                               Foreground="{DynamicResource AccentTextBrush}" TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Список следов -->
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                            <StackPanel Margin="6,0">
+                                <TextBlock Text="{Binding [deep_reg_group], Source={x:Static loc:Loc.I}}" FontSize="13" FontWeight="Bold"
+                                           Foreground="{DynamicResource MutedBrush}" Margin="2,8,0,6"/>
+                                <ItemsControl ItemsSource="{Binding DeepItems}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Style="{StaticResource Card}" Margin="0,4" Padding="14">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <CheckBox Grid.Column="0" IsChecked="{Binding Selected}" VerticalAlignment="Center"/>
+                                                    <TextBlock Grid.Column="1" Text="{Binding Glyph}" FontSize="22" Margin="14,0" VerticalAlignment="Center"/>
+                                                    <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold"/>
+                                                        <TextBlock Text="{Binding Desc}" FontSize="12"
+                                                                   Foreground="{DynamicResource MutedBrush}" Margin="0,2,0,0" TextWrapping="Wrap"/>
+                                                    </StackPanel>
+                                                    <TextBlock Grid.Column="3" Text="{Binding CountText}" FontSize="14" FontWeight="SemiBold"
+                                                               VerticalAlignment="Center" HorizontalAlignment="Right"
+                                                               Foreground="{DynamicResource AccentTextBrush}"/>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </ScrollViewer>
+
+                        <!-- Нижняя панель действий -->
+                        <Border Grid.Row="2" Style="{StaticResource Card}" Margin="6,10,6,0" Padding="16,12">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                                    <TextBlock Text="{Binding DeepNote}" FontSize="13" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap"/>
+                                    <TextBlock Text="{Binding DeepCleanedLine}" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource AccentTextBrush}" Margin="0,4,0,0"
+                                               Visibility="{Binding HasDeepCleaned, Converter={StaticResource BoolVis}}"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Button Content="{Binding [btn_scan], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}"
+                                            Command="{Binding ScanDeepCommand}" Margin="0,0,10,0" Padding="22,12"/>
+                                    <Button Content="{Binding [btn_clean], Source={x:Static loc:Loc.I}}" Style="{StaticResource DangerButton}"
+                                            Command="{Binding CleanDeepCommand}" Padding="26,12"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </Grid>
                 </Grid>
 
                 <!-- ===== Страница: Оптимизация ===== -->

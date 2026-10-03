@@ -43,6 +43,8 @@ public sealed class MainViewModel : ViewModelBase
 
     public RelayCommand ScanCommand { get; }
     public RelayCommand CleanCommand { get; }
+    public RelayCommand ScanDeepCommand { get; }
+    public RelayCommand CleanDeepCommand { get; }
     public RelayCommand RefreshCommand { get; }
     public RelayCommand SelectAllCommand { get; }
     public RelayCommand SelectNoneCommand { get; }
@@ -109,6 +111,9 @@ public sealed class MainViewModel : ViewModelBase
 
         ScanCommand = new RelayCommand(async () => await ScanAsync(), () => !IsBusy);
         CleanCommand = new RelayCommand(async () => await CleanAsync(), () => !IsBusy && SelectedBytes > 0);
+        BuildDeepClean();
+        ScanDeepCommand = new RelayCommand(async () => await ScanDeepAsync(), () => !DeepBusy);
+        CleanDeepCommand = new RelayCommand(async () => await CleanDeepAsync(), () => !DeepBusy && DeepItems.Any(i => i.Selected && i.HasTraces));
         RefreshCommand = new RelayCommand(RefreshDisks, () => !IsBusy);
         SelectAllCommand = new RelayCommand(() => SetAll(true));
         SelectNoneCommand = new RelayCommand(() => SetAll(false));
@@ -948,6 +953,8 @@ public sealed class MainViewModel : ViewModelBase
 
         // очистка: перечитать названия/описания категорий
         foreach (var c in Categories) c.RaiseLocalized();
+        foreach (var d in DeepItems) d.RaiseLocalized();
+        DeepNote = Loc.I["deep_note"];
         CategoriesView.Refresh();       // перегруппировать (Система/Браузеры)
 
         // реестр: галочки категорий
@@ -2364,4 +2371,89 @@ public sealed class MainViewModel : ViewModelBase
     private long _sessionFreed;
     public bool HasSessionFreed => _sessionFreed > 0;
     public string SessionFreedLine => string.Format(Loc.I["sess_freed"], Format.Bytes(_sessionFreed));
+
+    // ---------- Глубокая очистка (приватность) ----------
+    public ObservableCollection<DeepCleanItemVm> DeepItems { get; } = new();
+
+    private bool _deepBusy;
+    public bool DeepBusy
+    {
+        get => _deepBusy;
+        private set { if (Set(ref _deepBusy, value)) { ScanDeepCommand.RaiseCanExecuteChanged(); CleanDeepCommand.RaiseCanExecuteChanged(); } }
+    }
+
+    private string _deepNote = Loc.I["deep_note"];
+    public string DeepNote { get => _deepNote; private set => Set(ref _deepNote, value); }
+
+    private int _deepCleaned;
+    public bool HasDeepCleaned => _deepCleaned > 0;
+    public string DeepCleanedLine => string.Format(Loc.I["deep_cleaned"], _deepCleaned);
+
+    private void BuildDeepClean()
+    {
+        foreach (var t in DeepCleanService.RegistryTraces())
+        {
+            var vm = new DeepCleanItemVm(t);
+            vm.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName is nameof(DeepCleanItemVm.Selected) or nameof(DeepCleanItemVm.Count))
+                    CleanDeepCommand.RaiseCanExecuteChanged();
+            };
+            DeepItems.Add(vm);
+        }
+    }
+
+    private async Task ScanDeepAsync()
+    {
+        DeepBusy = true;
+        DeepNote = Loc.I["deep_scanning"];
+        try
+        {
+            var items = DeepItems.ToList();
+            var counts = await Task.Run(() => items.Select(i => i.CountOnly()).ToArray());
+            int total = 0;
+            for (int i = 0; i < items.Count; i++) { items[i].Count = counts[i]; total += counts[i]; }
+            DeepNote = total == 0 ? Loc.I["deep_clean_ok"] : string.Format(Loc.I["deep_found"], total);
+        }
+        catch (Exception ex) { DeepNote = string.Format(Loc.I["err"], ex.Message); }
+        finally { DeepBusy = false; CleanDeepCommand.RaiseCanExecuteChanged(); }
+    }
+
+    private async Task CleanDeepAsync()
+    {
+        var selected = DeepItems.Where(i => i.Selected && i.HasTraces).ToList();
+        if (selected.Count == 0) return;
+
+        if (System.Windows.MessageBox.Show(Loc.I["deep_confirm"], "NakClean",
+                System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Warning)
+            != System.Windows.MessageBoxResult.Yes)
+            return;
+
+        DeepBusy = true;
+        DeepNote = Loc.I["deep_cleaning"];
+        int cleaned = selected.Sum(i => i.Count);
+        try
+        {
+            await Task.Run(() => { foreach (var i in selected) i.ClearRegistry(); });
+            foreach (var i in selected) i.Count = 0;
+            DeepNote = string.Format(Loc.I["deep_done"], cleaned);
+            ToastService.Ok(string.Format(Loc.I["deep_done"], cleaned));
+        }
+        catch (Exception ex)
+        {
+            DeepNote = string.Format(Loc.I["err"], ex.Message);
+            ToastService.Error(DeepNote);
+        }
+        finally
+        {
+            DeepBusy = false;
+            CleanDeepCommand.RaiseCanExecuteChanged();
+            if (cleaned > 0)
+            {
+                _deepCleaned += cleaned;
+                OnPropertyChanged(nameof(HasDeepCleaned));
+                OnPropertyChanged(nameof(DeepCleanedLine));
+            }
+        }
+    }
 }
