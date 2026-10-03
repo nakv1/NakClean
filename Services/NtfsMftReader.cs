@@ -25,7 +25,7 @@ public sealed class DeletedFile
 /// Реализовано с нуля. Требует прав администратора и тома NTFS.
 /// Никакого стороннего кода - только Win32 API и разбор формата NTFS.
 /// </summary>
-public static class NtfsMftReader
+public static partial class NtfsMftReader
 {
     private const uint GENERIC_READ = 0x80000000;
     private const uint FILE_SHARE_RW = 0x3;

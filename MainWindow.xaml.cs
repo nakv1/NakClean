@@ -53,6 +53,16 @@ public partial class MainWindow : Window
         NavMaint.Checked += (_, _) => Vm?.EnsureMaintenanceLoaded();
         RgTabBackups.Checked += (_, _) => Vm?.RefreshBackups();
 
+        // поиск по имени: диски читаются при первом открытии; при возврате к поиску
+        // (в т.ч. из Проводника в окно) результаты молча освежаются
+        FlModeSearch.Checked += (_, _) =>
+        {
+            Vm?.EnsureSearchIndex();
+            Dispatcher.BeginInvoke(() => SearchBox.Focus(), System.Windows.Threading.DispatcherPriority.Input);
+        };
+        NavFiles.Checked += (_, _) => { if (FlModeSearch.IsChecked == true) Vm?.RefreshSearch(); };
+        Activated += (_, _) => { if (NavFiles.IsChecked == true && FlModeSearch.IsChecked == true) Vm?.RefreshSearch(); };
+
         // плавный fade контента при смене вкладки
         foreach (var nav in new[] { NavDash, NavCheck, NavClean, NavOptimize, NavMaint,
                                     NavRegistry, NavStartup, NavApps, NavFiles, NavRecovery, NavDiag, NavAbout })
@@ -154,6 +164,7 @@ public partial class MainWindow : Window
     {
         TreeRowVm t => t.FullPath,
         FileRowVm f => f.Path,
+        SearchRowVm s => s.Path,
         _ => null,
     };
 
@@ -166,7 +177,7 @@ public partial class MainWindow : Window
         string? path = PathOf(item.DataContext);
         if (path is null) return;
         e.Handled = true;
-        bool isFolder = item.DataContext is TreeRowVm { HasChildren: true };
+        bool isFolder = item.DataContext is TreeRowVm { HasChildren: true } or SearchRowVm { IsDir: true };
         ShowFileMenu(item, path, isFolder);
     }
 
@@ -214,6 +225,51 @@ public partial class MainWindow : Window
         if (FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject)?.DataContext is not FileRowVm f) return;
         e.Handled = true;
         SelectInExplorer(f.Path);
+    }
+
+    // ---------- Поиск по имени ----------
+    private void SearchRow_DoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject)?.DataContext is not SearchRowVm s) return;
+        e.Handled = true;
+        OpenSearchRow(s);
+    }
+
+    private void SearchList_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (SearchList.SelectedItem is not SearchRowVm s) return;
+        if (e.Key == Key.Enter) { e.Handled = true; OpenSearchRow(s); }
+        else if (e.Key == Key.Delete) { e.Handled = true; Vm?.DeleteToRecycle(s.Path, _hwnd); }
+    }
+
+    // стрелка вниз - к результатам, Esc - очистить строку
+    private void SearchBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Down && SearchList.Items.Count > 0)
+        {
+            e.Handled = true;
+            SearchList.SelectedIndex = Math.Max(0, SearchList.SelectedIndex);
+            SearchList.UpdateLayout();
+            (SearchList.ItemContainerGenerator.ContainerFromIndex(SearchList.SelectedIndex) as ListBoxItem)?.Focus();
+        }
+        else if (e.Key == Key.Escape && SearchBox.Text.Length > 0)
+        {
+            e.Handled = true;
+            SearchBox.Clear();
+        }
+    }
+
+    // открыть файл (или папку) как двойным кликом в Проводнике
+    private void OpenSearchRow(SearchRowVm s)
+    {
+        bool exists = s.IsDir ? System.IO.Directory.Exists(s.Path) : System.IO.File.Exists(s.Path);
+        if (!exists)
+        {
+            ToastService.Info(string.Format(Loc.I["fx_gone"], s.Name));
+            Vm?.RefreshSearch();
+            return;
+        }
+        try { Process.Start(new ProcessStartInfo(s.Path) { UseShellExecute = true }); } catch { }
     }
 
     private static void SelectInExplorer(string path)

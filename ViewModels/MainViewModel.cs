@@ -9,7 +9,7 @@ using NakClean.Services;
 
 namespace NakClean.ViewModels;
 
-public sealed class MainViewModel : ViewModelBase
+public sealed partial class MainViewModel : ViewModelBase
 {
     private readonly DispatcherTimer _timer;
     private CancellationTokenSource? _cts;
@@ -193,6 +193,7 @@ public sealed class MainViewModel : ViewModelBase
         MapUpCommand = new RelayCommand(() => { if (MapRoot?.Parent is { } p) MapRoot = p; },
             () => MapRoot?.Parent != null);
         LoadDrives();
+        InitSearch();
 
         BuildMaintenanceTasks();
 
@@ -996,6 +997,7 @@ public sealed class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(TargetDisplay));
         OnPropertyChanged(nameof(MapTitle));
         LoadDrives();                   // пересобрать подписи дисков на новом языке
+        OnSearchLanguageChanged();
     }
 
     public ObservableCollection<GpuVm> Gpus { get; } = new();
@@ -2100,6 +2102,7 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         RemoveFromScan(path, owner0);
+        RefreshSearch();
         ScanStatus = string.Format(Loc.I["fs_del_done"], name);
         ToastService.Ok(string.Format(Loc.I["fs_del_toast"], name));
     }

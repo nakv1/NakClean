@@ -1178,13 +1178,15 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
                     <!-- Заголовок + выбор диска/папки + Анализ -->
                     <Grid Grid.Row="0" Margin="6,4,6,8">
                         <TextBlock Text="{Binding [hdr_files], Source={x:Static loc:Loc.I}}" FontSize="22" FontWeight="Bold" VerticalAlignment="Center"/>
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    Visibility="{Binding IsChecked, ElementName=FlModeAnalyze, Converter={StaticResource BoolVis}}">
                             <ComboBox Width="300" Style="{StaticResource DarkCombo}" ItemContainerStyle="{StaticResource DarkComboItem}"
                                       ItemsSource="{Binding Drives}" SelectedItem="{Binding SelectedDrive}" Margin="0,0,8,0"/>
                             <Button Content="{Binding [fs_browse], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Margin="0,0,8,0" Command="{Binding BrowseFolderCommand}"/>
@@ -1192,8 +1194,15 @@
                         </StackPanel>
                     </Grid>
 
+                    <!-- Режим: анализ места / поиск по имени -->
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="6,0,0,8">
+                        <RadioButton x:Name="FlModeAnalyze" Content="{Binding [fl_mode_analyze], Source={x:Static loc:Loc.I}}" Style="{StaticResource NavButton}" GroupName="filesmode" IsChecked="True"/>
+                        <RadioButton x:Name="FlModeSearch" Content="{Binding [fl_mode_search], Source={x:Static loc:Loc.I}}" Style="{StaticResource NavButton}" GroupName="filesmode"/>
+                    </StackPanel>
+
                     <!-- Сводка по тому -->
-                    <Border Grid.Row="1" Style="{StaticResource Card}" Margin="6,0,6,8" Padding="14,8">
+                    <Border Grid.Row="2" Style="{StaticResource Card}" Margin="6,0,6,8" Padding="14,8"
+                            Visibility="{Binding IsChecked, ElementName=FlModeAnalyze, Converter={StaticResource BoolVis}}">
                         <Grid>
                             <StackPanel>
                                 <TextBlock Text="{Binding TargetDisplay}" FontWeight="SemiBold" Foreground="{DynamicResource AccentTextBrush}" TextTrimming="CharacterEllipsis"/>
@@ -1206,13 +1215,14 @@
                     </Border>
 
                     <!-- Вкладки Дерево / Файлы -->
-                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="6,0,0,8">
+                    <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="6,0,0,8"
+                                Visibility="{Binding IsChecked, ElementName=FlModeAnalyze, Converter={StaticResource BoolVis}}">
                         <RadioButton x:Name="FlTabTree" Content="{Binding [fs_tree], Source={x:Static loc:Loc.I}}" Style="{StaticResource NavButton}" GroupName="filessub" IsChecked="True"/>
                         <RadioButton x:Name="FlTabFiles" Content="{Binding [fs_files], Source={x:Static loc:Loc.I}}" Style="{StaticResource NavButton}" GroupName="filessub"/>
                     </StackPanel>
 
                     <!-- Контент + карта диска снизу -->
-                    <Grid Grid.Row="3">
+                    <Grid Grid.Row="4" Visibility="{Binding IsChecked, ElementName=FlModeAnalyze, Converter={StaticResource BoolVis}}">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="2*" MinHeight="120"/>
                             <RowDefinition Height="Auto"/>
@@ -1407,6 +1417,106 @@
                                 <ctrl:TreemapView x:Name="Treemap" Root="{Binding MapRoot, Mode=TwoWay}"/>
                                 <Button Content="{Binding [fs_up], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}"
                                         HorizontalAlignment="Right" VerticalAlignment="Top" Margin="8" Command="{Binding MapUpCommand}"/>
+                            </Grid>
+                        </Border>
+                    </Grid>
+
+                    <!-- ===== Поиск по имени (мгновенный, по индексу дисков) ===== -->
+                    <Grid Grid.Row="2" Grid.RowSpan="3"
+                          Visibility="{Binding IsChecked, ElementName=FlModeSearch, Converter={StaticResource BoolVis}}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- строка поиска + фильтры -->
+                        <Border Grid.Row="0" Style="{StaticResource Card}" Margin="6,0,6,8" Padding="14,10">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid Grid.Column="0" Margin="0,0,8,0">
+                                    <TextBox x:Name="SearchBox" Style="{StaticResource DarkTextBox}" FontSize="14"
+                                             Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                             PreviewKeyDown="SearchBox_PreviewKeyDown"/>
+                                    <TextBlock Text="{Binding [fx_placeholder], Source={x:Static loc:Loc.I}}" IsHitTestVisible="False"
+                                               Margin="12,0,10,0" VerticalAlignment="Center" FontSize="13"
+                                               Foreground="{DynamicResource MutedBrush}" TextTrimming="CharacterEllipsis"
+                                               Visibility="{Binding SearchTextEmpty, Converter={StaticResource BoolVis}}"/>
+                                </Grid>
+                                <ComboBox Grid.Column="1" Width="150" Style="{StaticResource DarkCombo}" ItemContainerStyle="{StaticResource DarkComboItem}"
+                                          ItemsSource="{Binding SearchTypes}" SelectedItem="{Binding SelectedSearchType}" Margin="0,0,8,0"/>
+                                <ComboBox Grid.Column="2" Width="120" Style="{StaticResource DarkCombo}" ItemContainerStyle="{StaticResource DarkComboItem}"
+                                          ItemsSource="{Binding SearchDrives}" SelectedItem="{Binding SelectedSearchDrive}" Margin="0,0,8,0"/>
+                                <Button Grid.Column="3" Content="{Binding [fx_refresh], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}"
+                                        ToolTip="{Binding [fx_refresh_tip], Source={x:Static loc:Loc.I}}" Command="{Binding RebuildIndexCommand}"/>
+                                <TextBlock Grid.Row="1" Grid.ColumnSpan="4" Text="{Binding SearchStatus}" Margin="2,8,0,0"
+                                           Foreground="{DynamicResource MutedBrush}" FontSize="12" TextTrimming="CharacterEllipsis"/>
+                            </Grid>
+                        </Border>
+
+                        <!-- результаты -->
+                        <Border Grid.Row="1" Style="{StaticResource Card}" Margin="6,0,6,0" Padding="0,6">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <Grid Grid.Row="0" Margin="12,2,14,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="2*"/>
+                                        <ColumnDefinition Width="3*"/>
+                                        <ColumnDefinition Width="90"/>
+                                        <ColumnDefinition Width="140"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Button Grid.Column="0" Content="{Binding SearchNameHeader}" Style="{StaticResource ColumnHeader}"
+                                            Command="{Binding SortSearchCommand}" CommandParameter="name"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding [fs_c_folder2], Source={x:Static loc:Loc.I}}" FontSize="11"
+                                               Foreground="{DynamicResource MutedBrush}" TextTrimming="CharacterEllipsis"/>
+                                    <Button Grid.Column="2" Content="{Binding SearchSizeHeader}" Style="{StaticResource ColumnHeader}" HorizontalAlignment="Right"
+                                            Command="{Binding SortSearchCommand}" CommandParameter="size"/>
+                                    <Button Grid.Column="3" Content="{Binding SearchDateHeader}" Style="{StaticResource ColumnHeader}" HorizontalAlignment="Right"
+                                            Command="{Binding SortSearchCommand}" CommandParameter="date"/>
+                                </Grid>
+                                <ListBox x:Name="SearchList" Grid.Row="1" Style="{StaticResource DarkList}"
+                                         ItemContainerStyle="{StaticResource RowItem}"
+                                         ItemsSource="{Binding SearchResults}" SelectedItem="{Binding SelectedSearchRow}"
+                                         MouseDoubleClick="SearchRow_DoubleClick"
+                                         PreviewMouseRightButtonUp="Row_RightClick"
+                                         KeyDown="SearchList_KeyDown"
+                                         VirtualizingStackPanel.IsVirtualizing="True"
+                                         VirtualizingStackPanel.VirtualizationMode="Recycling"
+                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="12,0,14,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="2*"/>
+                                                    <ColumnDefinition Width="3*"/>
+                                                    <ColumnDefinition Width="90"/>
+                                                    <ColumnDefinition Width="140"/>
+                                                </Grid.ColumnDefinitions>
+                                                <DockPanel Grid.Column="0" Margin="0,0,10,0">
+                                                    <TextBlock DockPanel.Dock="Left" Text="{Binding Icon}" FontSize="12" Margin="0,0,7,0" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                                                </DockPanel>
+                                                <TextBlock Grid.Column="1" Text="{Binding Folder}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource MutedBrush}" FontSize="12"/>
+                                                <TextBlock Grid.Column="2" Text="{Binding SizeText}" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource AccentTextBrush}" FontSize="12"/>
+                                                <TextBlock Grid.Column="3" Text="{Binding DateText}" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource MutedBrush}" FontSize="12"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
                             </Grid>
                         </Border>
                     </Grid>
