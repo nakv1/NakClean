@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
@@ -25,9 +25,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Первопартийные пакеты Microsoft: WMI (здоровье дисков) и журнал событий (анализ загрузки). -->
-    <PackageReference Include="System.Management" Version="8.0.0" />
-    <PackageReference Include="System.Diagnostics.EventLog" Version="8.0.0" />
+    <!-- Первопартийный пакет Microsoft: WMI (здоровье дисков). Журнал событий в .NET 10 уже входит в платформу. -->
+    <PackageReference Include="System.Management" Version="10.0.12" />
   </ItemGroup>
 
   <ItemGroup>

@@ -6,7 +6,7 @@
 
 Премиальный, прозрачный и **без плацебо** - только то, что реально работает.
 
-![.NET](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet&logoColor=white)
+![.NET](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet&logoColor=white)
 ![WPF](https://img.shields.io/badge/UI-WPF-2C3E50)
 ![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?logo=windows&logoColor=white)
 ![Platform](https://img.shields.io/badge/arch-x64-blue)
@@ -21,7 +21,7 @@
 
 ## О проекте
 
-**NakClean** - это аналог CCleaner / BoosterX / WizTree / Recuva, написанный с нуля на **C# / .NET 8 + WPF**.
+**NakClean** - это аналог CCleaner / BoosterX / WizTree / Recuva, написанный с нуля на **C# / .NET 10 + WPF**.
 Главный принцип - **честность**: никаких «ускорителей ОЗУ» и фейковых твиков. Каждое действие либо реально освобождает место, либо реально меняет настройку Windows - и программа честно говорит, какой будет эффект.
 
 Премиальный тёмно-золотой дизайн (есть и тёплая светлая тема), полная локализация **RU / EN**.
@@ -62,19 +62,19 @@
 - **Без плацебо** - отброшены все «фейковые» оптимизации; остались только реально работающие.
 - **Прозрачность** - перед удалением / изменением видно, что и зачем.
 - **Всё можно вернуть** - резервные копии реестра, автозапуска и списка программ, откат твиков, удаление файлов - в корзину.
-- **Минимум зависимостей** - WMI и Win32 P/Invoke, плюс пакеты `System.Management` и `System.Diagnostics.EventLog`.
+- **Минимум зависимостей** - WMI и Win32 P/Invoke, плюс пакет `System.Management`.
 - **Локализация 100%** - русский и английский, переключение «на лету». При первом запуске язык выбирается по языку Windows.
 
 ## 🧰 Стек
 
-- **C# / .NET 8**, **WPF** (собственный лёгкий MVVM)
+- **C# / .NET 10**, **WPF** (собственный лёгкий MVVM)
 - WMI (`System.Management`), журнал событий (`System.Diagnostics.EventLog`)
 - Win32 P/Invoke, COM через `dynamic`
 - Без внешних UI-библиотек
 
 ## 🔧 Сборка
 
-> Требуется [.NET 8 SDK](https://dotnet.microsoft.com/download).
+> Требуется [.NET 10 SDK](https://dotnet.microsoft.com/download).
 
 ```powershell
 # Отладочная сборка
