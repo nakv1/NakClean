@@ -58,6 +58,12 @@ public sealed partial class MainViewModel
         RebuildIndexCommand = new RelayCommand(async () => await BuildIndexAsync(), () => !IndexBusy);
         SortSearchCommand = new RelayCommand(p => SortSearch(p as string));
         BuildSearchOptions();
+        // дочиталась флешка - добавить её в список дисков и пересчитать текущий запрос
+        _index.VolumesChanged += () => System.Windows.Application.Current?.Dispatcher.BeginInvoke(() =>
+        {
+            BuildSearchOptions();
+            if (!IndexBusy) QueueSearch(0);
+        });
     }
 
     private string _searchText = "";
@@ -149,8 +155,16 @@ public sealed partial class MainViewModel
     private string IndexInfo()
     {
         if (!_index.IsReady) return IndexBusy ? Loc.I["fx_reading"] : "";
-        string drives = string.Join(", ", _index.Volumes.Select(v => v.Drive + ":"));
-        return string.Format(Loc.I["fx_indexed"], _index.ItemCount.ToString("N0"), drives, _indexSecs.ToString("0.0"));
+        var vols = _index.Volumes;
+        string drives = string.Join(", ", vols.Select(v => v.Drive + ":"));
+        string text = string.Format(Loc.I["fx_indexed"], _index.ItemCount.ToString("N0"), drives, _indexSecs.ToString("0.0"));
+
+        // честно: сами обновляются только диски с журналом изменений NTFS
+        var manual = vols.Where(v => !v.IsLive).Select(v => v.Drive + ":").ToList();
+        text += manual.Count == 0 ? Loc.I["fx_live_all"] : string.Format(Loc.I["fx_live_some"], string.Join(", ", manual));
+        var pending = _index.Pending;
+        if (pending.Count > 0) text += string.Format(Loc.I["fx_pending"], string.Join(", ", pending.Select(d => d + ":")));
+        return text;
     }
 
     private void BuildSearchOptions()

@@ -31,10 +31,11 @@ public static class StartupService
         ReadRunKey(RegistryHive.LocalMachine, RegistryView.Registry32, RunPath,
             RegistryHive.LocalMachine, ApprovedRun32, StartupSource.RunHKLM32, list);
 
+        // вкл/выкл ярлыков Windows хранит отдельно: своя папка - в HKCU, общая (для всех) - в HKLM
         ReadFolder(Environment.GetFolderPath(Environment.SpecialFolder.Startup),
-            StartupSource.FolderUser, list);
+            StartupSource.FolderUser, RegistryHive.CurrentUser, list);
         ReadFolder(Environment.GetFolderPath(Environment.SpecialFolder.CommonStartup),
-            StartupSource.FolderCommon, list);
+            StartupSource.FolderCommon, RegistryHive.LocalMachine, list);
 
         return list;
     }
@@ -69,16 +70,16 @@ public static class StartupService
         catch { /* ключ недоступен */ }
     }
 
-    private static void ReadFolder(string folder, StartupSource source, List<StartupEntry> list)
+    private static void ReadFolder(string folder, StartupSource source, RegistryHive approvedHive, List<StartupEntry> list)
     {
         if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder)) return;
         try
         {
+            using var approvedBase = RegistryKey.OpenBaseKey(approvedHive, RegistryView.Registry64);
+            using var approved = approvedBase.OpenSubKey(ApprovedFolder);
             foreach (var lnk in Directory.GetFiles(folder, "*.lnk"))
             {
                 string name = Path.GetFileNameWithoutExtension(lnk);
-                using var approvedBase = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, RegistryView.Default);
-                using var approved = approvedBase.OpenSubKey(ApprovedFolder);
                 bool enabled = IsApprovedEnabled(approved, Path.GetFileName(lnk));
                 list.Add(new StartupEntry
                 {
@@ -194,6 +195,7 @@ public static class StartupService
         StartupSource.RunHKCU => (RegistryHive.CurrentUser, RegistryView.Default, ApprovedRun),
         StartupSource.RunHKLM => (RegistryHive.LocalMachine, RegistryView.Registry64, ApprovedRun),
         StartupSource.RunHKLM32 => (RegistryHive.LocalMachine, RegistryView.Registry32, ApprovedRun32),
+        StartupSource.FolderCommon => (RegistryHive.LocalMachine, RegistryView.Registry64, ApprovedFolder),
         _ => (RegistryHive.CurrentUser, RegistryView.Default, ApprovedFolder),
     };
 }

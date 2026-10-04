@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.IO;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
 using Microsoft.Win32.SafeHandles;
@@ -216,21 +217,45 @@ public static class InstalledAppsService
         catch { return false; }
     }
 
+    /// <summary>
+    /// Запуск команды из реестра напрямую, без cmd.exe: cmd ломал пути с пробелами без кавычек
+    /// («C:\Program Files\App\unins000.exe» → «C:\Program») и кавычки внутри аргументов.
+    /// </summary>
     private static bool RunCommand(string cmd)
     {
         if (string.IsNullOrWhiteSpace(cmd)) return false;
+        var (file, args) = SplitCommand(Environment.ExpandEnvironmentVariables(cmd.Trim()));
+        if (file.Length == 0) return false;
         try
         {
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = "cmd.exe",
-                Arguments = "/c " + cmd,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            });
+            var psi = new ProcessStartInfo(file, args) { UseShellExecute = false };
+            string? dir = Path.GetDirectoryName(file);
+            if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir)) psi.WorkingDirectory = dir;   // часть деинсталляторов ищет файлы рядом
+            Process.Start(psi);
             return true;
         }
         catch { return false; }
+    }
+
+    /// <summary>Программа + аргументы. Путь без кавычек ищем как Windows: самый короткий кусок до пробела, который является файлом.</summary>
+    internal static (string File, string Args) SplitCommand(string cmd)
+    {
+        if (cmd.StartsWith('"'))
+        {
+            int end = cmd.IndexOf('"', 1);
+            return end > 0 ? (cmd[1..end], cmd[(end + 1)..].Trim()) : (cmd.Trim('"'), "");
+        }
+        for (int i = cmd.IndexOf(' '); i > 0; i = cmd.IndexOf(' ', i + 1))
+        {
+            string head = cmd[..i];
+            if (File.Exists(head)) return (head, cmd[(i + 1)..].Trim());
+            if (!head.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && File.Exists(head + ".exe"))
+                return (head + ".exe", cmd[(i + 1)..].Trim());
+        }
+        if (File.Exists(cmd)) return (cmd, "");
+        // короткое имя (MsiExec.exe /X{...}) - Windows найдёт его в System32 сама
+        int sp = cmd.IndexOf(' ');
+        return sp > 0 ? (cmd[..sp], cmd[(sp + 1)..].Trim()) : (cmd, "");
     }
 
     private static DateTime? ParseDate(string? s)

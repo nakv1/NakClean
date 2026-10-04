@@ -24,6 +24,8 @@ public sealed class VolumeIndex : NtfsMftReader.IIndexSink
 
     public char Drive { get; }
     public bool IsNtfs { get; private set; }
+    /// <summary>Индекс сам догоняет изменения (журнал NTFS включён). Иначе - только по «Перечитать».</summary>
+    public bool IsLive => _usn != null;
     public int ItemCount { get; private set; }
 
     internal readonly object Gate = new();
@@ -439,12 +441,52 @@ public sealed class FileIndex
         return list;
     }
 
+    /// <summary>Диски, которые ещё дочитываются в фоне (флешки FAT/exFAT - обычный обход медленный).</summary>
+    public IReadOnlyList<char> Pending { get { lock (_swapGate) return _pending.ToList(); } }
+    private readonly List<char> _pending = new();
+    private int _generation;
+
+    /// <summary>Набор дисков в индексе изменился (дочиталась флешка) - вызывается из фонового потока.</summary>
+    public event Action? VolumesChanged;
+
+    /// <summary>
+    /// NTFS-диски читаются через MFT за секунды - ждём только их, и поиск сразу работает.
+    /// Остальные (флешки) дочитываются в фоне и добавляются по готовности, чтобы не задерживать поиск.
+    /// </summary>
     public async Task BuildAsync(CancellationToken ct)
     {
-        var built = await Task.WhenAll(IndexableDrives().Select(d => Task.Run(() => VolumeIndex.TryBuild(d, ct), ct)));
-        var vols = built.OfType<VolumeIndex>().OrderBy(v => v.Drive).ToArray();
-        lock (_swapGate) Volatile.Write(ref _vols, vols);
+        int gen = Interlocked.Increment(ref _generation);
+        var drives = IndexableDrives();
+        var fast = drives.Where(NtfsMftReader.IsNtfs).ToList();
+        var slow = drives.Except(fast).ToList();
+
+        var built = await Task.WhenAll(fast.Select(d => Task.Run(() => VolumeIndex.TryBuild(d, ct), ct)));
+        lock (_swapGate)
+        {
+            // флешки из прошлого индекса остаются, пока не дочитаются заново
+            var keep = Volumes.Where(v => slow.Contains(v.Drive));
+            Volatile.Write(ref _vols, built.OfType<VolumeIndex>().Concat(keep).OrderBy(v => v.Drive).ToArray());
+            _pending.Clear();
+            _pending.AddRange(slow);
+        }
         IsReady = true;
+
+        foreach (char d in slow)
+        {
+            _ = Task.Run(() =>
+            {
+                var v = VolumeIndex.TryBuild(d, ct);
+                lock (_swapGate)
+                {
+                    if (gen != _generation) return;   // уже идёт новое чтение - этот результат устарел
+                    _pending.Remove(d);
+                    var list = Volumes.Where(x => x.Drive != d).ToList();
+                    if (v != null) list.Add(v);
+                    Volatile.Write(ref _vols, list.OrderBy(x => x.Drive).ToArray());
+                }
+                VolumesChanged?.Invoke();
+            });
+        }
     }
 
     public SearchResult Search(SearchQuery q, char? drive, SearchSort sort, bool desc, int take, CancellationToken ct)

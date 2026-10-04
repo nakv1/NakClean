@@ -260,7 +260,7 @@ public static class CleanEngine
             {
                 Id = "spotify", Group = "Программы", Glyph = "🎵",
                 Name = "Кэш Spotify",
-                Description = "Кэш загруженных данных (плейлисты остаются)",
+                Description = "Кэш загруженных данных. Плейлисты останутся, но скачанные для офлайна треки придётся скачать заново",
                 Roots = spotify,
             },
             new()
