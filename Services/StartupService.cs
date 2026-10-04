@@ -175,7 +175,7 @@ public static class StartupService
             }
             else if (File.Exists(e.LnkPath))
             {
-                return DuplicateService.DeleteToRecycle(e.LnkPath);   // ярлык можно вернуть из корзины
+                return FileEnumerator.DeleteToRecycle(e.LnkPath);   // ярлык можно вернуть из корзины
             }
             return true;
         }

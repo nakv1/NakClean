@@ -60,7 +60,7 @@ public static class FileScanService
         long totalSize = 0, totalAlloc = 0;
         int fileCount = 0, counter = 0;
 
-        foreach (var (path, size) in DuplicateService.Enumerate(root, ct))
+        foreach (var (path, size) in FileEnumerator.Enumerate(root, ct))
         {
             if ((++counter & 0x3FFF) == 0) ct.ThrowIfCancellationRequested();
             if (!path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;

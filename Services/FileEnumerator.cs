@@ -6,7 +6,7 @@ namespace NakClean.Services;
 /// <summary>
 /// Быстрый перебор всех файлов (для «Поиска файлов») и удаление мелких служебных файлов в Корзину.
 /// </summary>
-public static class DuplicateService
+public static class FileEnumerator
 {
     /// <summary>
     /// Перебор файлов: сначала пробуем быстрый MFT (NTFS + админ), иначе обычный обход.

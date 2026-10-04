@@ -10,14 +10,14 @@
     <AssemblyName>NakClean</AssemblyName>
     <RootNamespace>NakClean</RootNamespace>
     <ApplicationIcon>icon.ico</ApplicationIcon>
-    <Version>1.6.1</Version>
+    <Version>1.7.0</Version>
     <Company>nak</Company>
     <Authors>nak</Authors>
     <Product>NakClean</Product>
     <AssemblyTitle>NakClean - System Cleaner &amp; Optimizer</AssemblyTitle>
     <NeutralLanguage>en</NeutralLanguage>
     <Copyright>© 2026 nak (github.com/nakv1). Все права защищены. All rights reserved.</Copyright>
-    <Description>NakClean — честный чистильщик и оптимизатор Windows. Автор: nak (github.com/nakv1).</Description>
+    <Description>NakClean - честный чистильщик и оптимизатор Windows. Автор: nak (github.com/nakv1).</Description>
     <!-- Экономный сборщик мусора: рабочий (не серверный) режим использует меньше памяти,
          неконкурентный режим возвращает память ОС агрессивнее (после скана делаем GC.Collect). -->
     <ServerGarbageCollection>false</ServerGarbageCollection>

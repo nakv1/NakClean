@@ -639,6 +639,8 @@ public sealed class Loc : INotifyPropertyChanged
         ["fs_del_done"] = "«{0}» в корзине. Место на диске освободится, когда вы очистите корзину.",
         ["fs_del_toast"] = "«{0}» перемещён в корзину",
         // службы - режим запуска
+        ["ss_running"] = "Работает", ["ss_stopped"] = "Остановлена", ["ss_starting"] = "Запускается", ["ss_stopping"] = "Останавливается",
+        ["mnt_cancel_winsxs_q"] = "Microsoft не советует прерывать очистку хранилища компонентов. Всё равно прервать?",
         ["sm_auto"] = "Авто",
         ["sm_manual"] = "Вручную",
         ["sm_disabled"] = "Отключена",
@@ -1285,6 +1287,8 @@ public sealed class Loc : INotifyPropertyChanged
         ["fs_del_done"] = "\"{0}\" is in the Recycle Bin. Disk space is freed once you empty the Recycle Bin.",
         ["fs_del_toast"] = "\"{0}\" moved to the Recycle Bin",
         // services - start mode
+        ["ss_running"] = "Running", ["ss_stopped"] = "Stopped", ["ss_starting"] = "Starting", ["ss_stopping"] = "Stopping",
+        ["mnt_cancel_winsxs_q"] = "Microsoft advises against interrupting component store cleanup. Interrupt anyway?",
         ["sm_auto"] = "Auto",
         ["sm_manual"] = "Manual",
         ["sm_disabled"] = "Disabled",

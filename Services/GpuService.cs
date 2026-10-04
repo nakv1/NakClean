@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Management;
+using System.Runtime.InteropServices;
 
 namespace NakClean.Services;
 
@@ -30,14 +31,15 @@ public static class GpuService
         var adapters = GetAdapters();
         if (adapters.Count == 0) return new List<GpuStat>();
 
-        var usage = UsageByLuid();   // по убыванию загрузки
+        var usage = UsageByLuid();   // нагрузка по LUID видеокарты
+        var luids = LuidsByName();   // имя видеокарты → её LUID (через DXGI)
         // nvidia-smi дёргаем ТОЛЬКО если есть NVIDIA-адаптер - иначе на AMD/Intel ПК
         // это был бы бесполезный запуск процесса каждые несколько секунд.
         bool hasNvidia = adapters.Any(a => a.Vendor == "NVIDIA");
         var nv = hasNvidia ? NvidiaSmi() : new List<NvGpu>();
 
         var result = new List<GpuStat>();
-        int usageIdx = 0, nvIdx = 0;
+        int nvIdx = 0;
 
         foreach (var a in adapters)
         {
@@ -55,7 +57,8 @@ public static class GpuService
             }
             else
             {
-                double? u = usageIdx < usage.Count ? usage[usageIdx++] : null;
+                // нагрузку берём строго своей карты; не сопоставили - честно «нет данных», а не чужая цифра
+                double? u = luids.TryGetValue(a.Name, out var luid) && usage.TryGetValue(luid, out var v) ? v : null;
                 result.Add(new GpuStat
                 {
                     Name = a.Name,
@@ -120,7 +123,7 @@ public static class GpuService
         vram > 0 ? $"VRAM {Format.Bytes(vram)}" : "";
 
     // ---------- загрузка по LUID (счётчики GPU Engine) ----------
-    private static List<double> UsageByLuid()
+    private static Dictionary<string, double> UsageByLuid()
     {
         var byLuid = new Dictionary<string, Dictionary<string, double>>();
         try
@@ -148,11 +151,65 @@ public static class GpuService
         catch { }
 
         // загрузка одной карты = максимум по типам движков (как в Диспетчере задач)
-        return byLuid.Values
-            .Select(e => e.Count == 0 ? 0 : e.Values.Max())
-            .Select(v => Math.Clamp(v, 0, 100))
-            .OrderByDescending(v => v)
-            .ToList();
+        return byLuid.ToDictionary(kv => kv.Key,
+            kv => Math.Clamp(kv.Value.Count == 0 ? 0 : kv.Value.Values.Max(), 0, 100),
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    // ---------- LUID видеокарт через DXGI (тот же номер, что в счётчиках «luid_0x..._0x...») ----------
+    [ComImport, Guid("770aae78-f26f-4dba-a829-253c83d1b387"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IDXGIFactory1
+    {
+        void SetPrivateData(); void SetPrivateDataInterface(); void GetPrivateData(); void GetParent();
+        void EnumAdapters(); void MakeWindowAssociation(); void GetWindowAssociation(); void CreateSwapChain(); void CreateSoftwareAdapter();
+        [PreserveSig] int EnumAdapters1(uint index, out IDXGIAdapter1 adapter);
+    }
+
+    [ComImport, Guid("29038f61-3839-4626-91fd-086879011a05"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IDXGIAdapter1
+    {
+        void SetPrivateData(); void SetPrivateDataInterface(); void GetPrivateData(); void GetParent();
+        void EnumOutputs(); void GetDesc(); void CheckInterfaceSupport();
+        [PreserveSig] int GetDesc1(out DXGI_ADAPTER_DESC1 desc);
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct DXGI_ADAPTER_DESC1
+    {
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string Description;
+        public uint VendorId, DeviceId, SubSysId, Revision;
+        public nuint DedicatedVideoMemory, DedicatedSystemMemory, SharedSystemMemory;
+        public uint LuidLow;
+        public int LuidHigh;
+        public uint Flags;
+    }
+
+    [DllImport("dxgi.dll")]
+    private static extern int CreateDXGIFactory1(ref Guid riid, [MarshalAs(UnmanagedType.IUnknown)] out object factory);
+
+    private static Dictionary<string, string>? _luidCache;
+
+    /// <summary>Имя видеокарты → LUID в виде «0x00000000_0x0000D1B4» (как в именах счётчиков GPU Engine).</summary>
+    private static Dictionary<string, string> LuidsByName()
+    {
+        if (_luidCache != null) return _luidCache;
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            var iid = typeof(IDXGIFactory1).GUID;
+            if (CreateDXGIFactory1(ref iid, out var obj) == 0 && obj is IDXGIFactory1 f)
+            {
+                for (uint i = 0; f.EnumAdapters1(i, out var a) == 0; i++)
+                {
+                    if (a.GetDesc1(out var d) == 0 && !string.IsNullOrWhiteSpace(d.Description))
+                        map.TryAdd(d.Description.Trim(), $"0x{d.LuidHigh:X8}_0x{d.LuidLow:X8}");
+                    Marshal.ReleaseComObject(a);
+                }
+                Marshal.ReleaseComObject(f);
+            }
+        }
+        catch { }
+        return _luidCache = map;
     }
 
     // ---------- NVIDIA через nvidia-smi ----------

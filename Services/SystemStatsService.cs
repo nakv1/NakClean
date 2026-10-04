@@ -8,14 +8,7 @@ public record DiskStat(string Name, string Label, long TotalBytes, long FreeByte
     public double UsedPercent => TotalBytes > 0 ? UsedBytes * 100.0 / TotalBytes : 0;
 }
 
-public record SystemSnapshot(
-    double CpuPercent,
-    double RamPercent,
-    long RamTotal,
-    long RamUsed,
-    IReadOnlyList<DiskStat> Disks);
-
-/// <summary>Сбор «живой» статистики системы: диски, RAM, CPU.</summary>
+/// <summary>Диски для плиток «Обзора».</summary>
 public static class SystemStatsService
 {
     public static IReadOnlyList<DiskStat> GetDisks()
@@ -35,12 +28,5 @@ public static class SystemStatsService
             catch { /* недоступный диск - пропускаем */ }
         }
         return list;
-    }
-
-    public static SystemSnapshot GetSnapshot()
-    {
-        var (total, used, ramPercent) = Native.GetMemory();
-        double cpu = Native.GetCpuUsage();
-        return new SystemSnapshot(cpu, ramPercent, (long)total, (long)used, GetDisks());
     }
 }

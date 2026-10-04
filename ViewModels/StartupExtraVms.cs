@@ -63,7 +63,15 @@ public sealed class ServiceEntryVm : ViewModelBase
     public string Name => Entry.Name;
     public string DisplayName => Entry.DisplayName;
 
-    public string StateText => Entry.State;
+    // WMI отдаёт состояние по-английски - переводим
+    public string StateText => Entry.State switch
+    {
+        "Running" => Loc.I["ss_running"],
+        "Stopped" => Loc.I["ss_stopped"],
+        "Start Pending" => Loc.I["ss_starting"],
+        "Stop Pending" => Loc.I["ss_stopping"],
+        _ => Entry.State,
+    };
     public string StartModeText => Entry.StartMode switch
     {
         "Auto" => Loc.I["sm_auto"],

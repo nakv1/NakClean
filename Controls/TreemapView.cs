@@ -68,10 +68,10 @@ public sealed class TreemapView : FrameworkElement
         var root = Root;
         if (root is null || !root.HasChildren || area.Width < 4 || area.Height < 4) return;
 
-        Squarify(root.SortedChildren(), new Rect(2, 2, area.Width - 4, area.Height - 4), dc, 0, default);
+        Squarify(root.SortedChildren(), new Rect(2, 2, area.Width - 4, area.Height - 4), dc, 0);
     }
 
-    private void Squarify(List<Child> items, Rect r, DrawingContext dc, int depth, Color parentColor)
+    private void Squarify(List<Child> items, Rect r, DrawingContext dc, int depth)
     {
         items = items.Where(n => n.Size > 0).ToList();
         if (items.Count == 0 || r.Width < 1 || r.Height < 1) return;
@@ -121,7 +121,6 @@ public sealed class TreemapView : FrameworkElement
                 y += thickness; h -= thickness;
             }
             i = j;
-            _ = parentColor; // depth>0 цвет наследуется через DrawNode
         }
     }
 
@@ -153,7 +152,7 @@ public sealed class TreemapView : FrameworkElement
         {
             var prev = _currentColor;
             _currentColor = color;
-            Squarify(item.Folder!.SortedChildren(), inner, dc, depth + 1, color);
+            Squarify(item.Folder!.SortedChildren(), inner, dc, depth + 1);
             _currentColor = prev;
         }
     }

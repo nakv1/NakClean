@@ -20,6 +20,7 @@ public sealed class MaintenanceTaskVm : ViewModelBase
     private readonly bool _unicode;                             // sfc пишет UTF-16
 
     private CancellationTokenSource? _cts;
+    private bool _isRun;
     private readonly Stopwatch _sw = new();
     private DispatcherTimer? _tick;
 
@@ -178,6 +179,7 @@ public sealed class MaintenanceTaskVm : ViewModelBase
     private async Task StartProcess((string file, string args) step, string stageKey, bool review)
     {
         IsWorking = true; ShowConfirm = false;
+        _isRun = !review;   // идёт сама очистка, а не проверка
         IsIndeterminate = true; Progress = 0;
         Status = Loc.I[stageKey];
         StartTimer();
@@ -208,6 +210,11 @@ public sealed class MaintenanceTaskVm : ViewModelBase
 
     private void Cancel()
     {
+        // очистку WinSxS Microsoft не советует прерывать - переспрашиваем
+        if (IsWorking && _titleKey == "mnt_winsxs" && _isRun
+            && System.Windows.MessageBox.Show(Loc.I["mnt_cancel_winsxs_q"], "NakClean",
+                   System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Warning) != System.Windows.MessageBoxResult.Yes)
+            return;
         if (IsWorking) _cts?.Cancel();
         else if (ShowConfirm) { ShowConfirm = false; Status = ""; }
     }

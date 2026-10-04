@@ -1688,7 +1688,7 @@ public sealed partial class MainViewModel : ViewModelBase
                 System.Windows.MessageBoxImage.Question) != System.Windows.MessageBoxResult.Yes)
             return;
 
-        if (DuplicateService.DeleteToRecycle(sel.Backup.Path))
+        if (FileEnumerator.DeleteToRecycle(sel.Backup.Path))
         {
             RegBackups.Remove(sel);
             OnPropertyChanged(nameof(HasBackups));

@@ -144,9 +144,11 @@ public sealed class CleanCategory : ViewModelBase
     {
         if (Kind == TargetKind.RecycleBin)
         {
-            long freed = SizeBytes;
+            // освобождено = сколько было минус сколько осталось (если очистить не вышло - честный 0)
+            var (before, _) = Native.QueryRecycleBin();
             Native.EmptyRecycleBin();
-            return freed;
+            var (after, _) = Native.QueryRecycleBin();
+            return Math.Max(0, before - after);
         }
         BlockedBy = RunningBlocker();
         if (BlockedBy != null) return 0;

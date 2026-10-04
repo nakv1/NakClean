@@ -92,6 +92,7 @@ public static class MaintenanceService
         try { p = Process.Start(psi); }
         catch { return (false, ""); }
         if (p is null) return (false, "");
+        _ = p.StandardError.ReadToEndAsync();   // читаем и поток ошибок, иначе при большом выводе процесс может встать
 
         var token = new StringBuilder();
         var captured = new StringBuilder();
