@@ -198,12 +198,27 @@ public static class MaintenanceService
         return new(Loc.I["mnt_analyzed"], true);
     }
 
+    /// <summary>
+    /// Строка DISM «Component Store Cleanup Recommended : Yes/No» (по-русски «Рекомендуется очистка
+    /// хранилища компонентов : Да/Нет»). Читаем именно ответ после двоеточия: слово «рекомендуется»
+    /// есть в строке при любом ответе.
+    /// </summary>
     public static CheckResult InterpretWinsxs(string output)
     {
-        var o = output.ToLowerInvariant();
-        if (Has(o, "recommended : no", "recommended: no", "не рекомендуется"))
-            return new(Loc.I["mnt_r_winsxs_no"], false);
-        if (Has(o, "recommended : yes", "recommended: yes", "рекомендуется"))
+        bool? recommended = null;
+        foreach (var raw in output.Split('\n'))
+        {
+            var l = raw.Trim().ToLowerInvariant();
+            if (!l.Contains("recommended") && !l.Contains("рекомендуется")) continue;
+            int colon = l.LastIndexOf(':');
+            if (colon < 0) continue;
+            string answer = l[(colon + 1)..].Trim();
+            if (answer.StartsWith("yes") || answer.StartsWith("да")) recommended = true;
+            else if (answer.StartsWith("no") || answer.StartsWith("нет")) recommended = false;
+        }
+
+        if (recommended == false) return new(Loc.I["mnt_r_winsxs_no"], false);
+        if (recommended == true)
         {
             var size = ExtractReclaimable(output);
             return new(size != null

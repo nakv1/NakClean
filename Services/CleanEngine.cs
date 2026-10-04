@@ -121,6 +121,38 @@ public static class CleanEngine
             Path.Combine(Local, "Opera Software", "Opera Stable", "Cache"),
             Path.Combine(Roaming, "Opera Software", "Opera Stable", "Cache"));
 
+        var yandex = new List<string>();
+        yandex.AddRange(Glob(Path.Combine(Local, "Yandex", "YandexBrowser", "User Data"), "*", "Cache"));
+        yandex.AddRange(Glob(Path.Combine(Local, "Yandex", "YandexBrowser", "User Data"), "*", Path.Combine("Code Cache", "js")));
+
+        var vivaldi = new List<string>();
+        vivaldi.AddRange(Glob(Path.Combine(Local, "Vivaldi", "User Data"), "*", "Cache"));
+        vivaldi.AddRange(Glob(Path.Combine(Local, "Vivaldi", "User Data"), "*", Path.Combine("Code Cache", "js")));
+
+        // Telegram: картинки и видео из чатов (user_data, user_data#2... - по аккаунтам).
+        // Переписка и вход в аккаунт хранятся в других файлах tdata - их не трогаем.
+        var telegram = new List<string>();
+        telegram.AddRange(Glob(Path.Combine(Roaming, "Telegram Desktop", "tdata"), "user_data*", ""));
+        foreach (var pkg in Glob(Path.Combine(Local, "Packages"), "TelegramMessengerLLP.TelegramDesktop_*", ""))
+            telegram.AddRange(Glob(Path.Combine(pkg, "LocalCache", "Roaming", "Telegram Desktop UWP", "tdata"), "user_data*", ""));
+
+        // системные дампы после синего экрана (MEMORY.DMP бывает в десятки ГБ) и отчёты о сбоях драйверов
+        var sysDumpFiles = File.Exists(Path.Combine(WinDir, "MEMORY.DMP"))
+            ? new List<string> { Path.Combine(WinDir, "MEMORY.DMP") } : new List<string>();
+        var sysDumpDirs = Existing(Path.Combine(WinDir, "Minidump"), Path.Combine(WinDir, "LiveKernelReports"));
+
+        // «Оптимизация доставки»: копии обновлений, которые Windows раздаёт другим ПК
+        var delivery = Existing(
+            Path.Combine(WinDir, "ServiceProfiles", "NetworkService", "AppData", "Local", "Microsoft", "Windows", "DeliveryOptimization", "Cache"),
+            Path.Combine(WinDir, "SoftwareDistribution", "DeliveryOptimization"));
+
+        // распакованные установщики драйверов - нужны только во время установки.
+        // NVIDIA\Installer2 НЕ трогаем: без него может не удалиться драйвер.
+        var driverPkgs = string.IsNullOrEmpty(sysDrive) ? new List<string>() : Existing(
+            sysDrive + "\\AMD",
+            sysDrive + "\\NVIDIA",
+            Path.Combine(progData, "NVIDIA Corporation", "Downloader"));
+
         var list = new List<CleanCategory>
         {
             new()
@@ -209,6 +241,28 @@ public static class CleanEngine
             },
             new()
             {
+                Id = "sysdumps", Group = "Система", Glyph = "🛑",
+                Name = "Дампы памяти после синего экрана",
+                Description = "MEMORY.DMP и Minidump - бывают в десятки ГБ. Нужны, только если разбираетесь с причиной синего экрана",
+                Roots = sysDumpDirs, Files = sysDumpFiles, NeedsAdmin = true,
+            },
+            new()
+            {
+                Id = "delivery", Group = "Система", Glyph = "📡",
+                Name = "Оптимизация доставки",
+                Description = "Копии обновлений, которые Windows раздаёт другим компьютерам. Удаляются штатной командой Windows",
+                Roots = delivery, NeedsAdmin = true,
+                CustomClean = ct => CleanDelivery(delivery, ct),
+            },
+            new()
+            {
+                Id = "driverpkgs", Group = "Система", Glyph = "🧩",
+                Name = "Остатки установщиков драйверов",
+                Description = "Распакованные установщики AMD и скачанные драйверы NVIDIA - нужны только во время установки",
+                Roots = driverPkgs, NeedsAdmin = true,
+            },
+            new()
+            {
                 Id = "winold", Group = "Система", Glyph = "📦",
                 Name = "Папка Windows.old",
                 Description = "Старая копия Windows после обновления (может весить десятки ГБ)",
@@ -251,6 +305,20 @@ public static class CleanEngine
             },
             new()
             {
+                Id = "yandex", Group = "Браузеры", Glyph = "Я",
+                Name = "Кэш Яндекс.Браузера",
+                Description = "Кэш страниц и кода (история, пароли и вкладки не трогаются)",
+                Roots = yandex,
+            },
+            new()
+            {
+                Id = "vivaldi", Group = "Браузеры", Glyph = "🌐",
+                Name = "Кэш Vivaldi",
+                Description = "Кэш страниц и кода Vivaldi",
+                Roots = vivaldi,
+            },
+            new()
+            {
                 Id = "discord", Group = "Программы", Glyph = "🎧",
                 Name = "Кэш Discord",
                 Description = "Кэш страниц, кода и GPU (история чатов не трогается)",
@@ -279,6 +347,13 @@ public static class CleanEngine
             },
             new()
             {
+                Id = "telegram", Group = "Программы", Glyph = "✈",
+                Name = "Кэш Telegram",
+                Description = "Картинки и видео из чатов - скачаются снова при просмотре. Переписка и вход не трогаются. Telegram нужно закрыть",
+                Roots = telegram, MustBeClosed = new[] { "Telegram" },
+            },
+            new()
+            {
                 Id = "steam_shader", Group = "Программы", Glyph = "🎮",
                 Name = "Кэш шейдеров Steam",
                 Description = "shadercache - пересоздаётся при запуске игр",
@@ -289,7 +364,37 @@ public static class CleanEngine
         // Скрываем категории, для которых на этой машине нет ни одного пути
         // (кроме корзины - она всегда есть).
         return list
-            .Where(c => c.Kind == TargetKind.RecycleBin || c.Roots.Count > 0)
+            .Where(c => c.Kind == TargetKind.RecycleBin || c.Roots.Count > 0 || c.Files.Count > 0)
             .ToList();
+    }
+
+    /// <summary>
+    /// «Оптимизация доставки»: штатная команда Windows (как «Очистка диска») - служба сама отпускает файлы.
+    /// Не помогла - удаляем обычным способом. Освобождено = сколько было минус сколько осталось.
+    /// </summary>
+    private static long CleanDelivery(IReadOnlyList<string> roots, CancellationToken ct)
+    {
+        var (before, _) = FileOps.Measure(roots, "*", true, ct);
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo("powershell.exe",
+                "-NoProfile -NonInteractive -Command \"Delete-DeliveryOptimizationCache -Force\"")
+            { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+            using var p = System.Diagnostics.Process.Start(psi);
+            if (p != null)
+            {
+                _ = p.StandardError.ReadToEndAsync();
+                p.StandardOutput.ReadToEnd();
+                p.WaitForExit(120_000);
+            }
+        }
+        catch { }
+        var (after, _) = FileOps.Measure(roots, "*", true, ct);
+        if (after >= before && after > 0)
+        {
+            FileOps.Delete(roots, "*", true, null, ct);
+            (after, _) = FileOps.Measure(roots, "*", true, ct);
+        }
+        return Math.Max(0, before - after);
     }
 }

@@ -620,6 +620,7 @@ public sealed class Loc : INotifyPropertyChanged
         ["cl_scan_err"] = "Ошибка при сканировании: {0}",
         ["cl_cleaning"] = "Очистка…",
         ["cl_done"] = "Готово. Освобождено: {0}.",
+        ["cl_blocked"] = " Не очищено, пока открыто: {0} - закройте программу и запустите очистку ещё раз.",
         ["cl_interrupted"] = "Очистка прервана. Освобождено: {0}.",
         ["cl_clean_err"] = "Ошибка при очистке: {0}",
         // контекстное меню файлов (правый клик в Поиске файлов)
@@ -1137,6 +1138,12 @@ public sealed class Loc : INotifyPropertyChanged
         ["cat_brave"] = "Brave cache", ["catd_brave"] = "Brave page & code cache",
         ["cat_opera"] = "Opera cache", ["catd_opera"] = "Opera page cache",
         ["cat_discord"] = "Discord cache", ["catd_discord"] = "Page, code & GPU cache (chat history untouched)",
+        ["cat_yandex"] = "Yandex Browser cache", ["catd_yandex"] = "Page and code cache (history, passwords and tabs aren't touched)",
+        ["cat_vivaldi"] = "Vivaldi cache", ["catd_vivaldi"] = "Vivaldi page and code cache",
+        ["cat_telegram"] = "Telegram cache", ["catd_telegram"] = "Pictures and videos from chats - downloaded again when viewed. Chats and sign-in aren't touched. Telegram must be closed",
+        ["cat_sysdumps"] = "Memory dumps after a blue screen", ["catd_sysdumps"] = "MEMORY.DMP and Minidump - can take tens of GB. Only needed if you're investigating a blue screen",
+        ["cat_delivery"] = "Delivery Optimization", ["catd_delivery"] = "Copies of updates Windows shares with other PCs. Removed with the built-in Windows command",
+        ["cat_driverpkgs"] = "Driver installer leftovers", ["catd_driverpkgs"] = "Unpacked AMD installers and downloaded NVIDIA drivers - only needed during installation",
         ["cat_spotify"] = "Spotify cache", ["catd_spotify"] = "Cached data. Playlists stay, but songs downloaded for offline use will need to be downloaded again",
         ["cat_teams"] = "Microsoft Teams cache", ["catd_teams"] = "Page, code, GPU & attachment cache",
         ["cat_slack"] = "Slack cache", ["catd_slack"] = "Page & service-worker cache",
@@ -1259,6 +1266,7 @@ public sealed class Loc : INotifyPropertyChanged
         ["cl_scan_err"] = "Scan error: {0}",
         ["cl_cleaning"] = "Cleaning…",
         ["cl_done"] = "Done. Freed: {0}.",
+        ["cl_blocked"] = " Not cleaned while open: {0} - close the program and run the cleanup again.",
         ["cl_interrupted"] = "Cleanup interrupted. Freed: {0}.",
         ["cl_clean_err"] = "Cleanup error: {0}",
         // file context menu (right-click in File Search)

@@ -2438,6 +2438,15 @@ public sealed partial class MainViewModel : ViewModelBase
                 c.IsBusy = false;
             }
             Status = string.Format(Loc.I["cl_done"], Format.Bytes(freedTotal));
+
+            // кэш программ, которые были открыты (Telegram), не трогали - честно говорим, что делать
+            var blocked = selected.Select(c => c.BlockedBy).OfType<string>().Distinct().ToList();
+            if (blocked.Count > 0)
+            {
+                string note = string.Format(Loc.I["cl_blocked"], string.Join(", ", blocked));
+                Status += note;
+                ToastService.Warn(note.Trim());
+            }
         }
         catch (OperationCanceledException)
         {

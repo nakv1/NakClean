@@ -19,6 +19,18 @@ public sealed class CleanCategory : ViewModelBase
     public string Pattern { get; init; } = "*";
     public bool Recursive { get; init; } = true;
 
+    /// <summary>Отдельные файлы (например C:\Windows\MEMORY.DMP) - вдобавок к папкам.</summary>
+    public IReadOnlyList<string> Files { get; init; } = Array.Empty<string>();
+
+    /// <summary>Своё удаление вместо обычного (например штатная команда Windows). Возвращает освобождённые байты.</summary>
+    public Func<CancellationToken, long>? CustomClean { get; init; }
+
+    /// <summary>Чистим только когда эти программы закрыты (имена процессов без .exe) - иначе можно испортить их данные.</summary>
+    public IReadOnlyList<string> MustBeClosed { get; init; } = Array.Empty<string>();
+
+    /// <summary>Последняя очистка пропущена: эта программа из MustBeClosed была открыта (null - не пропускали). Фоновый поток.</summary>
+    public string? BlockedBy { get; private set; }
+
     /// <summary>Помечать ли категорию как требующую прав администратора.</summary>
     public bool NeedsAdmin { get; init; }
 
@@ -102,7 +114,29 @@ public sealed class CleanCategory : ViewModelBase
             return (size, (int)count);
         }
         var (bytes, files) = FileOps.Measure(Roots, Pattern, Recursive, ct);
+        foreach (var f in Files)
+        {
+            try { var fi = new System.IO.FileInfo(f); if (fi.Exists) { bytes += fi.Length; files++; } }
+            catch { }
+        }
         return (bytes, files);
+    }
+
+    /// <summary>Какая из программ, которые надо закрыть, сейчас открыта (null - все закрыты).</summary>
+    public string? RunningBlocker()
+    {
+        foreach (var name in MustBeClosed)
+        {
+            try
+            {
+                var procs = System.Diagnostics.Process.GetProcessesByName(name);
+                bool running = procs.Length > 0;
+                foreach (var p in procs) p.Dispose();
+                if (running) return name;
+            }
+            catch { }
+        }
+        return null;
     }
 
     /// <summary>Удаление. Возвращает реально освобождённые байты. Фоновый поток.</summary>
@@ -114,7 +148,23 @@ public sealed class CleanCategory : ViewModelBase
             Native.EmptyRecycleBin();
             return freed;
         }
+        BlockedBy = RunningBlocker();
+        if (BlockedBy != null) return 0;
+        if (CustomClean != null) return CustomClean(ct);
+
         var (freedBytes, _, _) = FileOps.Delete(Roots, Pattern, Recursive, null, ct);
+        foreach (var f in Files)
+        {
+            try
+            {
+                var fi = new System.IO.FileInfo(f);
+                if (!fi.Exists) continue;
+                long len = fi.Length;
+                fi.Delete();
+                freedBytes += len;
+            }
+            catch { /* занят - пропускаем */ }
+        }
         return freedBytes;
     }
 }
