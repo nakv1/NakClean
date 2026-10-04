@@ -34,8 +34,19 @@ public static class FileOps
             catch { continue; }
 
             foreach (var s in subs)
-                stack.Push(s);
+                if (!IsLink(s)) stack.Push(s);
         }
+    }
+
+    /// <summary>
+    /// Папка-ссылка (junction / символическая ссылка) ведёт в ДРУГОЕ место диска -
+    /// внутрь не заходим, иначе можно удалить файлы вне чистимой папки.
+    /// Сомневаемся (нет доступа к атрибутам) - тоже считаем ссылкой и пропускаем.
+    /// </summary>
+    private static bool IsLink(string dir)
+    {
+        try { return (File.GetAttributes(dir) & FileAttributes.ReparsePoint) != 0; }
+        catch { return true; }
     }
 
     /// <summary>Считает суммарный размер и количество файлов (без удаления).</summary>
@@ -102,7 +113,7 @@ public static class FileOps
         catch { return; }
 
         foreach (var sub in subs)
-            TryRemoveEmptyDirs(sub, keepRoot: false);
+            if (!IsLink(sub)) TryRemoveEmptyDirs(sub, keepRoot: false);
 
         if (keepRoot) return;
         try

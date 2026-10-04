@@ -178,7 +178,8 @@ public static class HealthCheckService
         {
             int bad = 0;
             using var s = new ManagementObjectSearcher(
-                "SELECT Name, ConfigManagerErrorCode FROM Win32_PnPEntity WHERE ConfigManagerErrorCode <> 0");
+                // 22 = устройство отключено вручную - это решение человека, а не неисправность
+                "SELECT Name, ConfigManagerErrorCode FROM Win32_PnPEntity WHERE ConfigManagerErrorCode <> 0 AND ConfigManagerErrorCode <> 22");
             foreach (ManagementObject o in s.Get())
             {
                 using (o) bad++;

@@ -48,7 +48,6 @@ public sealed partial class MainViewModel : ViewModelBase
     public RelayCommand RefreshCommand { get; }
     public RelayCommand SelectAllCommand { get; }
     public RelayCommand SelectNoneCommand { get; }
-    public RelayCommand RefreshHealthCommand { get; }
     public RelayCommand RunHealthCheckCommand { get; }
     public RelayCommand RefreshStartupCommand { get; }
     public RelayCommand EnableStartupCommand { get; }
@@ -85,8 +84,6 @@ public sealed partial class MainViewModel : ViewModelBase
     public RelayCommand AnalyzeCommand { get; }
     public RelayCommand BrowseFolderCommand { get; }
     public RelayCommand MapUpCommand { get; }
-    public RelayCommand RefreshBatteryCommand { get; }
-    public RelayCommand RefreshBootCommand { get; }
     public RelayCommand ExportReportCommand { get; }
     public RelayCommand CheckUpdatesCommand { get; }
     public RelayCommand OpenReleaseCommand { get; }
@@ -117,7 +114,6 @@ public sealed partial class MainViewModel : ViewModelBase
         RefreshCommand = new RelayCommand(RefreshDisks, () => !IsBusy);
         SelectAllCommand = new RelayCommand(() => SetAll(true));
         SelectNoneCommand = new RelayCommand(() => SetAll(false));
-        RefreshHealthCommand = new RelayCommand(async () => await LoadDiskHealthAsync());
         RunHealthCheckCommand = new RelayCommand(async () => await RunHealthCheckAsync());
         RefreshStartupCommand = new RelayCommand(async () => await LoadStartupAsync());
         EnableStartupCommand = new RelayCommand(() => ToggleStartup(true), () => SelectedStartup != null);
@@ -167,8 +163,7 @@ public sealed partial class MainViewModel : ViewModelBase
         ApplyProfileCommand = new RelayCommand(p => SelectProfile(p as string));
         RevertAllCommand = new RelayCommand(async () => await RevertAllAsync(), () => !OptBusy && ChangeLog.Count > 0);
         ReloadChangeLog();
-        RefreshBatteryCommand = new RelayCommand(async () => await LoadBatteryAsync());
-        RefreshBootCommand = new RelayCommand(async () => await LoadBootAsync());
+        InitDiagnostics();
         ExportReportCommand = new RelayCommand(ExportReport);
         CheckUpdatesCommand = new RelayCommand(async () => await CheckUpdatesAsync(true), () => !UpdateBusy);
         OpenReleaseCommand = new RelayCommand(OpenRelease, () => !UpdateBusy);
@@ -254,9 +249,7 @@ public sealed partial class MainViewModel : ViewModelBase
     {
         if (_diagLoaded) return;
         _diagLoaded = true;
-        _ = LoadDiskHealthAsync();
-        _ = LoadBatteryAsync();
-        _ = LoadBootAsync();
+        _ = RefreshDiagnosticsAsync();
     }
 
     // ---------- Обслуживание системы ----------
@@ -436,46 +429,96 @@ public sealed partial class MainViewModel : ViewModelBase
             else BatHasCharge = false;
         }
         catch { BatteryNote = Loc.I["bat_none"]; BatteryPresent = false; }
-        finally { BatteryBusy = false; }
+        finally { BatteryBusy = false; RebuildDiagTiles(); }
     }
 
     // ---------- Диагностика: время загрузки ----------
+    private BootInfo? _boot;
+    private bool _bootReading;
+
+    public ObservableCollection<BootPhaseVm> BootPhases { get; } = new();
+
     private bool _bootHasSlow;
     public bool BootHasSlow { get => _bootHasSlow; private set => Set(ref _bootHasSlow, value); }
+
+    private bool _bootHasData;
+    public bool BootHasData { get => _bootHasData; private set => Set(ref _bootHasData, value); }
 
     private string _bootNote = "";
     public string BootNote { get => _bootNote; private set => Set(ref _bootNote, value); }
 
+    private string _bootWhen = "", _bootBios = "", _bootWindows = "", _bootTotal = "", _bootPhasesHead = "",
+        _bootPost = "", _bootHidden = "", _bootSlowEmpty = "";
+    public string BootWhen { get => _bootWhen; private set => Set(ref _bootWhen, value); }
+    public string BootBiosText { get => _bootBios; private set => Set(ref _bootBios, value); }
+    public string BootWindowsText { get => _bootWindows; private set => Set(ref _bootWindows, value); }
+    public string BootTotalText { get => _bootTotal; private set => Set(ref _bootTotal, value); }
+    public string BootPhasesHead { get => _bootPhasesHead; private set => Set(ref _bootPhasesHead, value); }
+    public string BootPostText { get => _bootPost; private set => Set(ref _bootPost, value); }
+    public string BootHiddenText { get => _bootHidden; private set => Set(ref _bootHidden, value); }
+    public string BootSlowEmpty { get => _bootSlowEmpty; private set => Set(ref _bootSlowEmpty, value); }
+
     private async Task LoadBootAsync()
     {
-        BootNote = Loc.I["boot_reading"];
-        BootSlow.Clear();
-        BootHasSlow = false;
-        try
+        _bootReading = true;
+        BuildBootView();
+        try { _boot = await BootService.Analyze(); }
+        catch { _boot = null; }
+        finally
         {
-            var b = await BootService.Analyze();
-            if (!b.Available) { BootNote = Loc.I["boot_none"]; return; }
-
-            BootNote = b.BootSeconds > 0
-                ? string.Format(Loc.I["boot_time"], b.BootSeconds)
-                : Loc.I["boot_slow_head"];
-
-            foreach (var s in b.Slow)
-                BootSlow.Add(new BootSlowVm
-                {
-                    Name = s.Name,
-                    Info = $"{s.Seconds} {Loc.I["u_sec"]} · {Loc.I["boot_kind_" + s.Kind]}",
-                });
-            BootHasSlow = BootSlow.Count > 0;
-            if (!BootHasSlow && b.BootSeconds > 0) BootNote += "  " + Loc.I["boot_noslow"];
+            _bootReading = false;
+            BuildBootView();
+            RebuildDiagTiles();
         }
-        catch { BootNote = Loc.I["boot_none"]; }
+    }
+
+    private static string Sec(int ms) => $"{ms / 1000.0:0.#} {Loc.I["u_sec"]}";
+
+    /// <summary>Раздел «Загрузка» из прочитанных данных (и при смене языка - без повторного чтения журнала).</summary>
+    private void BuildBootView()
+    {
+        BootSlow.Clear();
+        BootPhases.Clear();
+        var b = _boot;
+        _bootSeconds = b is { Available: true } ? (int)Math.Round(b.WindowsMs / 1000.0) : -1;
+        BootHasData = b is { Available: true };
+        BootHasSlow = false;
+        if (b is not { Available: true })
+        {
+            BootNote = Loc.I[_bootReading ? "boot_reading" : "boot_none"];
+            return;
+        }
+        BootNote = "";
+
+        var culture = System.Globalization.CultureInfo.GetCultureInfo(Loc.I.IsEn ? "en-US" : "ru-RU");
+        BootWhen = b.When is { } w ? string.Format(Loc.I["boot_last"], w.ToString("d MMMM, HH:mm", culture)) : "";
+        BootBiosText = b.BiosMs > 0 ? Sec(b.BiosMs) : Loc.I["hw_na"];
+        BootWindowsText = Sec(b.WindowsMs);
+        BootTotalText = b.BiosMs > 0 ? Sec(b.BiosMs + b.WindowsMs) : Sec(b.WindowsMs);
+
+        BootPhasesHead = string.Format(Loc.I["boot_phases_head"], Sec(b.WindowsMs));
+        int max = b.Phases.Count > 0 ? b.Phases.Max(p => p.Ms) : 1;
+        foreach (var p in b.Phases)
+            BootPhases.Add(new BootPhaseVm(Loc.I[p.Key], Sec(p.Ms), p.Ms * 100.0 / Math.Max(1, max)));
+
+        BootPostText = b.PostBootMs >= 5000 ? string.Format(Loc.I["boot_post"], Sec(b.PostBootMs)) : "";
+
+        foreach (var s in b.Slow)
+        {
+            string key = "bn_" + s.Name.ToLowerInvariant();
+            string friendly = Loc.I[key];
+            BootSlow.Add(new BootSlowVm
+            {
+                Name = friendly == key ? s.Name : $"{s.Name}  ({friendly})",
+                Info = $"{s.Seconds:0.#} {Loc.I["u_sec"]} · {Loc.I["boot_kind_" + s.Kind]}",
+            });
+        }
+        BootHasSlow = BootSlow.Count > 0;
+        BootSlowEmpty = BootHasSlow ? "" : Loc.I["boot_noslow"];
+        BootHiddenText = b.HiddenSmall > 0 ? string.Format(Loc.I["boot_hidden"], b.HiddenSmall) : "";
     }
 
     // ---------- Паспорт ПК (HTML-отчёт) ----------
-    private string _reportNote = "";
-    public string ReportNote { get => _reportNote; private set => Set(ref _reportNote, value); }
-
     private void ExportReport()
     {
         try
@@ -501,26 +544,41 @@ public sealed partial class MainViewModel : ViewModelBase
             sb.Append("h1{color:#ddb44b;margin:0 0 4px}h2{color:#ddb44b;border-bottom:1px solid #2a2a32;padding-bottom:6px;margin:30px 0 10px;font-size:18px}");
             sb.Append("table{border-collapse:collapse;width:100%;max-width:920px}td{padding:7px 10px;border-bottom:1px solid #24242c;vertical-align:top}");
             sb.Append("td.k{color:#9a9aa0;width:260px}.muted{color:#8a8a94;font-size:13px}.b{color:#ddb44b;font-weight:600}</style></head><body>");
-            sb.Append($"<h1>NakClean — {E(Loc.I["rep_title"])}</h1>");
+            sb.Append($"<h1>NakClean - {E(Loc.I["rep_title"])}</h1>");
             sb.Append($"<div class='muted'>{E(Loc.I["rep_generated"])}: {DateTime.Now:yyyy-MM-dd HH:mm}</div>");
 
-            sb.Append($"<h2>{E(Loc.I["rep_os"])}</h2><table>");
-            Row(sb, Loc.I["ho_t"], System.Runtime.InteropServices.RuntimeInformation.OSDescription);
-            sb.Append("</table>");
-
-            sb.Append($"<h2>{E(Loc.I["tile_cpu"])}</h2><table>");
-            Row(sb, CpuName, CpuSpec);
-            sb.Append("</table>");
-
-            sb.Append($"<h2>{E(Loc.I["tile_ram"])}</h2><table>");
-            Row(sb, RamSpec, RamDetail);
-            sb.Append("</table>");
-
-            if (Gpus.Count > 0)
+            if (HwCards.Count > 0)
             {
-                sb.Append($"<h2>{E(Loc.I["tile_gpu"])}</h2><table>");
-                foreach (var g in Gpus) Row(sb, g.Name, $"{g.Detail}  ·  {g.TempText}");
+                // подробные сведения из «Железа»: Windows, плата, процессор, память по слотам, видео...
+                foreach (var card in HwCards)
+                {
+                    sb.Append($"<h2>{E(card.Title)}</h2><table>");
+                    foreach (var r in card.Rows)
+                        Row(sb, r.Label.Length > 0 ? r.Label : r.Value,
+                            r.Label.Length > 0 ? (r.Sub.Length > 0 ? $"{r.Value} ({r.Sub})" : r.Value) : r.Sub);
+                    sb.Append("</table>");
+                }
+            }
+            else
+            {
+                sb.Append($"<h2>{E(Loc.I["rep_os"])}</h2><table>");
+                Row(sb, Loc.I["ho_t"], System.Runtime.InteropServices.RuntimeInformation.OSDescription);
                 sb.Append("</table>");
+
+                sb.Append($"<h2>{E(Loc.I["tile_cpu"])}</h2><table>");
+                Row(sb, CpuName, CpuSpec);
+                sb.Append("</table>");
+
+                sb.Append($"<h2>{E(Loc.I["tile_ram"])}</h2><table>");
+                Row(sb, RamSpec, RamDetail);
+                sb.Append("</table>");
+
+                if (Gpus.Count > 0)
+                {
+                    sb.Append($"<h2>{E(Loc.I["tile_gpu"])}</h2><table>");
+                    foreach (var g in Gpus) Row(sb, g.Name, $"{g.Detail}  ·  {g.TempText}");
+                    sb.Append("</table>");
+                }
             }
 
             if (DiskHealth.Count > 0)
@@ -547,12 +605,10 @@ public sealed partial class MainViewModel : ViewModelBase
             string file = dlg.FileName;
             System.IO.File.WriteAllText(file, sb.ToString(), System.Text.Encoding.UTF8);
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(file) { UseShellExecute = true });
-            ReportNote = string.Format(Loc.I["rep_saved"], file);
             ToastService.Ok(string.Format(Loc.I["rep_saved"], file));
         }
         catch (Exception ex)
         {
-            ReportNote = string.Format(Loc.I["err"], ex.Message);
             ToastService.Error(string.Format(Loc.I["err"], ex.Message));
         }
 
@@ -998,6 +1054,9 @@ public sealed partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(MapTitle));
         LoadDrives();                   // пересобрать подписи дисков на новом языке
         OnSearchLanguageChanged();
+        BuildHardwareCards();           // «Железо» + плитки сводки - из уже прочитанных данных, без повторного опроса
+        BuildBootView();
+        RebuildDiagTiles();
     }
 
     public ObservableCollection<GpuVm> Gpus { get; } = new();
@@ -1220,6 +1279,7 @@ public sealed partial class MainViewModel : ViewModelBase
         HealthNote = _diskModels.Count == 0
             ? Loc.I["dh_note_empty"]
             : string.Format(Loc.I["dh_note"], _diskModels.Count);
+        RebuildDiagTiles();
     }
 
     // ---------- Проверка состояния ПК ----------
@@ -1546,14 +1606,16 @@ public sealed partial class MainViewModel : ViewModelBase
         var issues = selected.Select(s => s.Issue).ToList();
         try
         {
-            var (backup, del, fail) = await Task.Run(() =>
+            // удаляем только то, чья копия реально сохранилась; остальное остаётся в списке
+            var (backup, saved, del, fail) = await Task.Run(() =>
             {
-                string b = RegistryFixService.Backup(issues);
-                var (d, f) = RegistryFixService.Delete(issues);
-                return (b, d, f);
+                var (b, s) = RegistryFixService.Backup(issues);
+                var (d, f) = RegistryFixService.Delete(s);
+                return (b, s, d, f + issues.Count - s.Count);
             });
 
-            foreach (var vm in selected) RegIssues.Remove(vm);
+            var savedSet = saved.ToHashSet();
+            foreach (var vm in selected.Where(v => savedSet.Contains(v.Issue))) RegIssues.Remove(vm);
             RefreshBackups();
             RegNote = string.Format(Loc.I["reg_removed"], del)
                       + (fail > 0 ? string.Format(Loc.I["reg_failed"], fail) : "")
@@ -1562,6 +1624,11 @@ public sealed partial class MainViewModel : ViewModelBase
             System.Windows.MessageBox.Show(
                 string.Format(Loc.I["reg_done_box"], del, fail, backup),
                 "NakClean", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
+        }
+        catch (RegistryFixService.BackupFailedException)
+        {
+            RegNote = Loc.I["reg_nobackup"];
+            ToastService.Warn(RegNote);
         }
         catch (Exception ex) { RegNote = string.Format(Loc.I["reg_fix_err"], ex.Message); }
         finally
@@ -1826,27 +1893,47 @@ public sealed partial class MainViewModel : ViewModelBase
             if (apply && CreateRestore)
             {
                 OptNote = Loc.I["opt_rp_creating"];
-                bool rp = await Task.Run(() => OptimizationService.CreateRestorePoint(Loc.I["opt_rp_name"]));
-                restoreNote = rp ? Loc.I["opt_rp_ok"] : Loc.I["opt_rp_fail"];
+                var (rp, last) = await Task.Run(() => OptimizationService.CreateRestorePoint(Loc.I["opt_rp_name"]));
+                string when = last?.ToString("g", System.Globalization.CultureInfo.GetCultureInfo(Loc.I.IsEn ? "en-US" : "ru-RU")) ?? "";
+                restoreNote = rp switch
+                {
+                    RestorePointResult.Created => Loc.I["opt_rp_ok"],
+                    RestorePointResult.RecentExists => string.Format(Loc.I["opt_rp_recent"], when),
+                    _ => Loc.I["opt_rp_fail"],
+                };
             }
 
             OptNote = Loc.I[apply ? "opt_applying" : "opt_reverting"];
-            int done = 0;
+            int done = 0, skipped = 0;
             foreach (var t in sel)
             {
-                bool ok = await Task.Run(() => apply ? t.Tweak.Apply() : t.Tweak.Revert());
-                if (ok)
+                var tw = t.Tweak;
+                if (apply)
                 {
-                    done++;
-                    // журнал изменений: применённые добавляем, откатанные убираем
-                    if (apply) ChangeLogService.Add(t.Tweak.Id, t.Tweak.NameKey);
-                    else ChangeLogService.Remove(t.Tweak.Id);
+                    // снимок «как было» - только при первом применении (повторный был бы уже «после»)
+                    bool ok = await Task.Run(() =>
+                    {
+                        string? snap = ChangeLogService.Get(tw.Id) is null ? tw.Snapshot() : null;
+                        if (!tw.Apply()) return false;
+                        ChangeLogService.Add(tw.Id, tw.NameKey, snap);
+                        return true;
+                    });
+                    if (ok) done++;
+                }
+                else
+                {
+                    var r = await Task.Run(() => OptimizationService.RevertOne(tw));
+                    if (r == RevertResult.Reverted) done++;
+                    else if (r == RevertResult.NotApplied) skipped++;
                 }
                 t.RefreshStatus();
             }
             ReloadChangeLog();
 
-            OptNote = string.Format(Loc.I[apply ? "opt_applied_n" : "opt_reverted_n"], done, sel.Count)
+            OptNote = (apply
+                          ? string.Format(Loc.I["opt_applied_n"], done, sel.Count)
+                          : string.Format(Loc.I["opt_reverted_n"], done, sel.Count - skipped)
+                            + (skipped > 0 ? string.Format(Loc.I["opt_skipped"], skipped) : ""))
                       + restoreNote + Loc.I["opt_after"];
         }
         catch (Exception ex) { OptNote = string.Format(Loc.I["err"], ex.Message); }
@@ -1881,16 +1968,22 @@ public sealed partial class MainViewModel : ViewModelBase
         try
         {
             var byId = OptimizationService.BuildTweaks().ToDictionary(t => t.Id);
-            int done = 0;
+            int done = 0, failed = 0;
             await Task.Run(() =>
             {
                 foreach (var e in entries)
-                    if (byId.TryGetValue(e.Id, out var t) && t.Revert()) done++;
+                {
+                    // неизвестный твик (из будущей/прошлой версии) - убрать из журнала нечем, оставляем
+                    if (!byId.TryGetValue(e.Id, out var t)) { failed++; continue; }
+                    // удачные откаты сами уходят из журнала; неудачные остаются - их можно повторить
+                    if (OptimizationService.RevertOne(t) == RevertResult.Failed) failed++; else done++;
+                }
             });
-            ChangeLogService.Clear();
             ReloadChangeLog();
             foreach (var t in Tweaks) t.RefreshStatus();
-            OptNote = string.Format(Loc.I["chg_reverted"], done) + Loc.I["opt_after"];
+            OptNote = string.Format(Loc.I["chg_reverted"], done)
+                      + (failed > 0 ? string.Format(Loc.I["chg_failed"], failed) : "")
+                      + Loc.I["opt_after"];
         }
         catch (Exception ex) { OptNote = string.Format(Loc.I["err"], ex.Message); }
         finally { OptBusy = false; }

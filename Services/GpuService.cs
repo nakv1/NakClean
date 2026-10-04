@@ -70,6 +70,8 @@ public static class GpuService
     }
 
     // ---------- список адаптеров ----------
+    private static readonly Dictionary<string, long> _vramCache = new();
+
     private static List<Adapter> GetAdapters()
     {
         var list = new List<Adapter>();
@@ -84,8 +86,12 @@ public static class GpuService
                     string name = mo["Name"]?.ToString() ?? Loc.I["tile_gpu"];
                     if (IsVirtual(name)) continue;
 
+                    // AdapterRAM 32-битный - больше 4 ГБ не покажет; настоящий объём берём из реестра драйвера
                     long vram = 0;
                     try { vram = Convert.ToInt64(mo["AdapterRAM"]); } catch { }
+                    if (!_vramCache.TryGetValue(name, out long regVram))
+                        _vramCache[name] = regVram = HardwareInfoService.VideoMemory(name);
+                    if (regVram > vram) vram = regVram;
 
                     string pnp = mo["PNPDeviceID"]?.ToString() ?? "";
                     string compat = mo["AdapterCompatibility"]?.ToString() ?? "";

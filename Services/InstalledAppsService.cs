@@ -203,7 +203,7 @@ public static class InstalledAppsService
                     Hive = app.Hive,
                     SubKey = RegistryFixService.RealSubKey(app.Hive, app.View, app.SubKey),
                 },
-            }, "uninstall", requireData: true);
+            }, "uninstall");   // копия не сохранилась - исключение, запись не удаляем
 
             using var baseKey = RegistryKey.OpenBaseKey(app.Hive, app.View);
             int slash = app.SubKey.LastIndexOf('\\');

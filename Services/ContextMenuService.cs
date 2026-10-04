@@ -104,8 +104,9 @@ public static class ContextMenuService
         };
         try
         {
-            RegistryFixService.Backup(new[] { issue }, "contextmenu");
-            var (_, failed) = RegistryFixService.Delete(new[] { issue });
+            // без сохранённой копии Backup бросит исключение - и пункт останется на месте
+            var (_, saved) = RegistryFixService.Backup(new[] { issue }, "contextmenu");
+            var (_, failed) = RegistryFixService.Delete(saved);
             return failed == 0;
         }
         catch { return false; }

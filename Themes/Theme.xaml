@@ -595,4 +595,36 @@
         </Setter>
     </Style>
 
+    <!-- ===== Текст своим цветом (ValueBrush), а если цвета нет - обычным цветом темы ===== -->
+    <Style x:Key="BrushOrText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+        <Setter Property="Foreground" Value="{Binding ValueBrush}"/>
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding ValueBrush}" Value="{x:Null}">
+                <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- ===== Плитка-кнопка (сводка «Диагностики»): карточка, подсветка рамки при наведении ===== -->
+    <Style x:Key="TileButton" TargetType="Button">
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="b" Background="{DynamicResource CardSurface}" CornerRadius="16" Padding="16,14"
+                            BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1" Effect="{DynamicResource CardShadow}">
+                        <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Top"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
 </ResourceDictionary>

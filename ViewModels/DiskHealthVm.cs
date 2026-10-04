@@ -31,6 +31,7 @@ public sealed class DiskHealthVm : ViewModelBase
             .Select(i => new DiskIssueVm(string.Format(Loc.I[i.Key], i.Arg), i.Severe ? Red : Gold))
             .ToList();
         Attributes = d.Attributes.Select(a => new SmartAttrVm(a, _d.Attributes)).ToList();
+        Metrics = BuildMetrics();
         ToggleSerialCommand = new RelayCommand(() => SerialShown = !SerialShown);
         ToggleAttrsCommand = new RelayCommand(() => AttrsExpanded = !AttrsExpanded);
     }
@@ -163,6 +164,25 @@ public sealed class DiskHealthVm : ViewModelBase
     /// <summary>Второй ряд показываем, только если SMART прочитан (иначе там одни прочерки).</summary>
     public bool HasExtra => _d.Attributes.Count > 0;
 
+    // ---------- показатели одной сеткой: только те, что диск реально сообщил ----------
+    public List<DiskMetricVm> Metrics { get; }
+
+    private List<DiskMetricVm> BuildMetrics()
+    {
+        var list = new List<DiskMetricVm>();
+        if (_d.TemperatureC.HasValue) list.Add(new(Loc.I["dh_temp"], TempText, TempBrush));
+        if (_d.PowerOnHours.HasValue) list.Add(new(Loc.I["dh_hours"], PowerOnText, null));
+        if (_d.WearPercent.HasValue)
+            list.Add(new(Loc.I["dh_wear"], WearText, HasWearVerdict ? WearBrush : null,
+                HasWearVerdict ? WearVerdict : "", WearBrush));
+        if (_d.ReadErrors.HasValue || _d.WriteErrors.HasValue) list.Add(new(Loc.I["dh_errors"], ErrorsText, null));
+        if (_d.BytesWritten.HasValue) list.Add(new(Loc.I["dh_written"], WrittenText, null));
+        if (_d.BytesRead.HasValue) list.Add(new(Loc.I["dh_readtot"], ReadText, null));
+        if (_d.PowerCycles.HasValue) list.Add(new(Loc.I["dh_cycles"], CyclesText, null));
+        if (_d.UnsafeShutdowns.HasValue) list.Add(new(Loc.I["dh_unsafe"], UnsafeText, null));
+        return list;
+    }
+
     // ---------- функции, проблемы, атрибуты ----------
     public List<DiskFeatureVm> Features { get; }
     public bool HasFeatures => Features.Count > 0;
@@ -196,6 +216,12 @@ public sealed record DiskFeatureVm(string Name, bool On)
 }
 
 public sealed record DiskIssueVm(string Text, Brush Brush);
+
+/// <summary>Показатель диска: подпись, значение (своим цветом, если есть) и вердикт под ним.</summary>
+public sealed record DiskMetricVm(string Label, string Value, Brush? ValueBrush, string Note = "", Brush? NoteBrush = null)
+{
+    public bool HasNote => Note.Length > 0;
+}
 
 /// <summary>Строка таблицы атрибутов SMART.</summary>
 public sealed class SmartAttrVm

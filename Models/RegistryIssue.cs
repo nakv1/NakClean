@@ -15,6 +15,9 @@ public sealed class RegistryIssue
     /// <summary>Имя значения для удаления. null = удалить подключ целиком.</summary>
     public string? ValueName { get; init; }
 
+    /// <summary>Своё удаление вместо правки реестра (правила брандмауэра - через netsh). true = удалено.</summary>
+    public Func<bool>? CustomDelete { get; init; }
+
     /// <summary>Короткий префикс куста для reg.exe (HKLM/HKCU/HKCR…).</summary>
     public string HiveShort => Hive switch
     {

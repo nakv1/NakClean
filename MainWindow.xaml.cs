@@ -227,6 +227,20 @@ public partial class MainWindow : Window
         SelectInExplorer(f.Path);
     }
 
+    // ---------- Диагностика: плитка сводки открывает свой раздел ----------
+    private void DiagTile_Click(object sender, RoutedEventArgs e)
+    {
+        var tab = ((sender as FrameworkElement)?.Tag as string) switch
+        {
+            "disks" => DgTabDisks,
+            "battery" => DgTabBattery,
+            "boot" => DgTabBoot,
+            "hw" => DgTabHw,
+            _ => null,
+        };
+        if (tab != null) tab.IsChecked = true;
+    }
+
     // ---------- Поиск по имени ----------
     private void SearchRow_DoubleClick(object sender, MouseButtonEventArgs e)
     {

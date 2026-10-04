@@ -23,6 +23,8 @@ public static class RegistryScanService
         new Category("sound", "Звуковые события"),
         new Category("mui", "Кэш MUI"),
         new Category("help", "Файлы справки"),
+        new Category("appcompat", "Журнал совместимости"),
+        new Category("firewall", "Правила брандмауэра"),
     };
 
     // локализованное имя категории (RU - из списка выше, EN - из Loc)
@@ -48,6 +50,8 @@ public static class RegistryScanService
         Run("sound", ScanSoundEvents);
         Run("mui", ScanMuiCache);
         Run("help", ScanHelpFiles);
+        Run("appcompat", ScanAppCompat);
+        Run("firewall", ScanFirewall);
 
         return issues;
     }
@@ -55,25 +59,69 @@ public static class RegistryScanService
     // ---------- helpers ----------
     private static RegistryKey Base(RegistryHive h) => RegistryKey.OpenBaseKey(h, RegistryView.Registry64);
 
+    /// <summary>
+    /// true - только если УВЕРЕНЫ, что файла нет: путь полный (буква подключённого локального диска)
+    /// и ни одно прочтение команды не ведёт к существующему файлу. Есть сомнения - запись не трогаем.
+    /// </summary>
     private static bool FileMissing(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return false; // пусто - не считаем проблемой
-        string path = ExtractExePath(Environment.ExpandEnvironmentVariables(raw));
-        if (string.IsNullOrWhiteSpace(path)) return false;
-        return !File.Exists(path) && !Directory.Exists(path);
+        string cmd = Environment.ExpandEnvironmentVariables(raw).Trim();
+        if (cmd.Contains('%')) return false;              // переменная не раскрылась - не знаем, куда ведёт
+
+        if (cmd.StartsWith('"'))
+        {
+            int end = cmd.IndexOf('"', 1);
+            string quoted = end > 0 ? cmd[1..end] : cmd.Trim('"');
+            return IsCheckable(quoted) && !FileOrDirExists(quoted);
+        }
+
+        // Без кавычек путь сам может содержать пробелы: «C:\Program Files\App\app.exe /S».
+        // Как Windows при запуске: пробуем всё более длинные куски до пробела - хоть один файл есть → запись живая.
+        if (FileOrDirExists(cmd)) return false;
+        for (int i = cmd.IndexOf(' '); i > 0; i = cmd.IndexOf(' ', i + 1))
+            if (FileExists(cmd[..i])) return false;
+
+        int space = cmd.IndexOf(' ');
+        return IsCheckable(space > 0 ? cmd[..space] : cmd);
     }
 
-    private static string ExtractExePath(string command)
+    private static bool FileExists(string p)
     {
-        command = command.Trim();
-        if (command.StartsWith('"'))
+        try { return File.Exists(p) || (!p.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && File.Exists(p + ".exe")); }
+        catch { return false; }
+    }
+
+    private static bool FileOrDirExists(string p)
+    {
+        try { return FileExists(p) || Directory.Exists(p); }
+        catch { return false; }
+    }
+
+    /// <summary>Готовый полный путь (без аргументов) точно указывает на несуществующий файл.</summary>
+    private static bool PathMissing(string path)
+    {
+        path = Environment.ExpandEnvironmentVariables(path.Trim().Trim('"'));
+        if (path.Contains('%') || IsWindowsApps(path)) return false;
+        return IsCheckable(path) && !FileOrDirExists(path);
+    }
+
+    // Program Files\WindowsApps закрыта даже для администратора: файл может быть на месте,
+    // а Windows скажет «нет». Проверить не можем - значит, не трогаем.
+    private static bool IsWindowsApps(string path)
+        => path.Contains(@"\WindowsApps\", StringComparison.OrdinalIgnoreCase);
+
+    // Проверять можно только полный путь на подключённом локальном диске.
+    // Короткое имя (rundll32.exe), сетевой путь, отключённая флешка - не можем быть уверены.
+    private static bool IsCheckable(string path)
+    {
+        if (path.Length < 3 || path[1] != ':' || path[2] != '\\' || !char.IsLetter(path[0])) return false;
+        try
         {
-            int end = command.IndexOf('"', 1);
-            return end > 0 ? command[1..end] : command.Trim('"');
+            var d = new DriveInfo(path[..1]);
+            return d.IsReady && d.DriveType is DriveType.Fixed or DriveType.Removable;
         }
-        // путь без кавычек: режем по первому пробелу, после которого идёт ключ/аргумент
-        int space = command.IndexOf(' ');
-        return space > 0 ? command[..space] : command;
+        catch { return false; }
     }
 
     // ---------- сканеры ----------
@@ -144,7 +192,9 @@ public static class RegistryScanService
                     Target = ext,
                     Hive = RegistryHive.ClassesRoot,
                     SubKey = ext,
-                    ValueName = null,
+                    // только «битая» ссылка на тип (значение по умолчанию); остальное в ключе
+                    // (OpenWithProgids, Content Type, ShellNew...) рабочее - его не трогаем
+                    ValueName = "",
                 });
         }
     }
@@ -274,7 +324,7 @@ public static class RegistryScanService
             int idx = name.IndexOf(".exe", StringComparison.OrdinalIgnoreCase);
             if (idx <= 0) continue;
             string exe = name[..(idx + 4)];
-            if (!File.Exists(Environment.ExpandEnvironmentVariables(exe)))
+            if (PathMissing(exe))
                 issues.Add(new RegistryIssue
                 {
                     Category = Cat("mui"),
@@ -285,6 +335,107 @@ public static class RegistryScanService
                     ValueName = name,
                 });
         }
+    }
+
+    // Журнал совместимости: Windows записывает каждую запущенную программу (и выбранный для неё
+    // режим совместимости). Программы больше нет - запись просто история, удалять безопасно.
+    private static void ScanAppCompat(List<RegistryIssue> issues)
+    {
+        const string flags = @"Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags";
+        var places = new (RegistryHive hive, string path)[]
+        {
+            (RegistryHive.CurrentUser, flags + @"\Compatibility Assistant\Store"),
+            (RegistryHive.CurrentUser, flags + @"\Layers"),
+            (RegistryHive.LocalMachine, flags + @"\Layers"),
+        };
+        foreach (var (hive, path) in places)
+        {
+            using var k = Base(hive).OpenSubKey(path);
+            if (k is null) continue;
+            foreach (var name in k.GetValueNames())
+            {
+                if (!PathMissing(name)) continue;   // имя значения = полный путь к программе
+                issues.Add(new RegistryIssue
+                {
+                    Category = Cat("appcompat"),
+                    Problem = Loc.I["rp_compat"],
+                    Target = name,
+                    Hive = hive,
+                    SubKey = path,
+                    ValueName = name,
+                });
+            }
+        }
+    }
+
+    // Правила брандмауэра для программ, которых больше нет (старые версии, удалённые проекты).
+    // Удаляем штатно через netsh - служба брандмауэра сразу забывает правило (правка реестра
+    // подействовала бы только после перезагрузки). Копия ключа с правилами - как для всего остального.
+    private static void ScanFirewall(List<RegistryIssue> issues)
+    {
+        const string path = @"SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\FirewallRules";
+        using var k = Base(RegistryHive.LocalMachine).OpenSubKey(path);
+        if (k is null) return;
+        foreach (var id in k.GetValueNames())
+        {
+            if (k.GetValue(id) is not string data) continue;
+            string? app = null, name = null;
+            foreach (var part in data.Split('|'))
+            {
+                if (part.StartsWith("App=", StringComparison.OrdinalIgnoreCase)) app = part[4..];
+                else if (part.StartsWith("Name=", StringComparison.OrdinalIgnoreCase)) name = part[5..];
+            }
+            // имя-ссылка на ресурс (@...) или с кавычками netsh не примет - такие не трогаем
+            if (app is null || string.IsNullOrWhiteSpace(name) || name.StartsWith('@') || name.Contains('"') || app.Contains('"'))
+                continue;
+            if (!PathMissing(app)) continue;
+
+            string ruleName = name, ruleApp = app;
+            issues.Add(new RegistryIssue
+            {
+                Category = Cat("firewall"),
+                Problem = Loc.I["rp_firewall"],
+                Target = $"{ruleName} → {ruleApp}",
+                Hive = RegistryHive.LocalMachine,
+                SubKey = path,
+                ValueName = id,
+                // итог проверяем по факту: правила больше нет в реестре брандмауэра
+                // (одинаковые правила netsh удаляет разом - второе тогда уже считается удалённым)
+                CustomDelete = () =>
+                {
+                    RunNetsh($"advfirewall firewall delete rule name=\"{ruleName}\" program=\"{ruleApp}\"");
+                    return !ValueExists(path, id);
+                },
+            });
+        }
+    }
+
+    private static bool ValueExists(string subKey, string valueName)
+    {
+        try
+        {
+            using var k = Base(RegistryHive.LocalMachine).OpenSubKey(subKey);
+            return k?.GetValue(valueName) != null;
+        }
+        catch { return true; }
+    }
+
+    private static void RunNetsh(string args)
+    {
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo("netsh.exe", args)
+            {
+                UseShellExecute = false, CreateNoWindow = true,
+                RedirectStandardOutput = true, RedirectStandardError = true,
+            };
+            using var p = System.Diagnostics.Process.Start(psi);
+            if (p is null) return;
+            _ = p.StandardError.ReadToEndAsync();   // читаем оба потока, чтобы netsh не встал на полном буфере
+            p.StandardOutput.ReadToEnd();
+            p.WaitForExit(15000);
+        }
+        catch { }
     }
 
     private static void ScanHelpFiles(List<RegistryIssue> issues)

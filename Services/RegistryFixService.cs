@@ -23,47 +23,55 @@ public static class RegistryFixService
     // строка-метка внутри .reg (комментарий «;» reg.exe игнорирует при импорте)
     private const string MetaPrefix = "; NakClean";
 
-    /// <summary>Экспортирует затронутые ключи в один .reg-файл. Возвращает путь.</summary>
+    /// <summary>
+    /// Экспортирует затронутые ключи в один .reg-файл. Возвращает путь к копии и записи, чья копия
+    /// реально сохранилась - удалять можно ТОЛЬКО их. Не сохранилось ничего - исключение
+    /// <see cref="BackupFailedException"/> (удалять без копии нельзя).
+    /// </summary>
     /// <param name="kind">откуда копия: registry / contextmenu / startup / uninstall (для списка копий)</param>
-    /// <param name="requireData">не удалось сохранить ни одного ключа - удалить пустой файл и бросить исключение (удалять без копии нельзя)</param>
-    public static string Backup(IReadOnlyList<RegistryIssue> issues, string kind = "registry", bool requireData = false)
+    public static (string File, List<RegistryIssue> Saved) Backup(IReadOnlyList<RegistryIssue> issues, string kind = "registry")
     {
-        int exported = 0;
-        Directory.CreateDirectory(BackupDir);
-        string file = Path.Combine(BackupDir, $"reg-backup-{DateTime.Now:yyyyMMdd-HHmmss-fff}.reg");
-
-        var sb = new StringBuilder();
-        sb.AppendLine("Windows Registry Editor Version 5.00");
-        sb.AppendLine($"{MetaPrefix} kind={kind} count={issues.Count}");
-        sb.AppendLine();
+        var body = new StringBuilder();
+        var savedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         // уникальные ключи для экспорта (для значений - содержащий ключ)
-        var paths = issues.Select(i => i.FullPath).Distinct(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var path in paths)
+        foreach (var path in issues.Select(i => i.FullPath).Distinct(StringComparer.OrdinalIgnoreCase))
         {
             string tmp = Path.Combine(Path.GetTempPath(), $"pw-reg-{Guid.NewGuid():N}.reg");
             try
             {
                 if (RunReg($"export \"{path}\" \"{tmp}\" /y") && File.Exists(tmp))
                 {
-                    exported++;
                     // отбрасываем строку-заголовок версии у каждого фрагмента
-                    foreach (var line in File.ReadAllLines(tmp, Encoding.Unicode))
+                    var lines = File.ReadAllLines(tmp, Encoding.Unicode)
+                        .Where(l => !l.StartsWith("Windows Registry Editor")).ToList();
+                    if (lines.Any(l => l.StartsWith('[')))
                     {
-                        if (line.StartsWith("Windows Registry Editor")) continue;
-                        sb.AppendLine(line);
+                        foreach (var line in lines) body.AppendLine(line);
+                        savedPaths.Add(path);
                     }
                 }
             }
-            catch { /* не вышло экспортировать этот ключ - пропускаем */ }
+            catch { /* не вышло экспортировать этот ключ - его и не удаляем */ }
             finally { try { if (File.Exists(tmp)) File.Delete(tmp); } catch { } }
         }
 
-        if (requireData && exported == 0) throw new InvalidOperationException("backup failed");
+        var saved = issues.Where(i => savedPaths.Contains(i.FullPath)).ToList();
+        if (saved.Count == 0) throw new BackupFailedException();
+
+        Directory.CreateDirectory(BackupDir);
+        string file = Path.Combine(BackupDir, $"reg-backup-{DateTime.Now:yyyyMMdd-HHmmss-fff}.reg");
+        var sb = new StringBuilder();
+        sb.AppendLine("Windows Registry Editor Version 5.00");
+        sb.AppendLine($"{MetaPrefix} kind={kind} count={saved.Count}");
+        sb.AppendLine();
+        sb.Append(body);
         File.WriteAllText(file, sb.ToString(), Encoding.Unicode);
-        return file;
+        return (file, saved);
     }
+
+    /// <summary>Резервную копию сохранить не удалось - поэтому ничего не удалено.</summary>
+    public sealed class BackupFailedException() : Exception("registry backup failed");
 
     /// <summary>
     /// Копия ОТДЕЛЬНЫХ значений (а не всего ключа) - при восстановлении вернётся ровно удалённое,
@@ -159,6 +167,11 @@ public static class RegistryFixService
         {
             try
             {
+                if (i.CustomDelete is { } custom)
+                {
+                    if (custom()) deleted++; else failed++;
+                    continue;
+                }
                 using var baseKey = RegistryKey.OpenBaseKey(i.Hive, RegistryView.Registry64);
                 if (i.ValueName is null)
                 {
