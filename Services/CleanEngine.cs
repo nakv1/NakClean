@@ -164,7 +164,7 @@ public static class CleanEngine
             },
             new()
             {
-                Id = "temp_win", Group = "Система", Glyph = "🪟",
+                Id = "temp_win", Group = "Система", Glyph = "🗔",
                 Name = "Временные файлы Windows",
                 Description = "Windows\\Temp - общесистемная временная папка",
                 Roots = Existing(winTemp), NeedsAdmin = true,

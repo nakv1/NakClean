@@ -13,6 +13,9 @@ public sealed class InstalledApp
     public string UninstallString { get; init; } = "";
     public string QuietUninstallString { get; init; } = "";
     public string ModifyPath { get; init; } = "";
+    /// <summary>Папка установки (InstallLocation) и значок (DisplayIcon) - зацепки для поиска остатков после удаления.</summary>
+    public string InstallLocation { get; init; } = "";
+    public string DisplayIcon { get; init; } = "";
 
     // где запись лежит в реестре (для переименования/удаления записи)
     public RegistryHive Hive { get; init; }

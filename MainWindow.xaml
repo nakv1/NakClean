@@ -430,8 +430,8 @@
                                             </Grid.ColumnDefinitions>
 
                                             <CheckBox Grid.Column="0" IsChecked="{Binding Selected}" VerticalAlignment="Center"/>
-                                            <TextBlock Grid.Column="1" Text="{Binding Glyph}" FontSize="22"
-                                                       Margin="14,0" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding Glyph}" FontSize="22" Width="32" TextAlignment="Center"
+                                                       Margin="11,0" VerticalAlignment="Center"/>
                                             <StackPanel Grid.Column="2" VerticalAlignment="Center">
                                                 <StackPanel Orientation="Horizontal">
                                                     <TextBlock Text="{Binding NameText}" FontSize="14" FontWeight="SemiBold"/>
@@ -1170,6 +1170,49 @@
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
+
+                    <!-- Остатки после удаления: поверх списка, пока открыт -->
+                    <Border Grid.Row="2" Grid.RowSpan="2" Style="{StaticResource Card}" Margin="6,0,6,0" Padding="16,14"
+                            Visibility="{Binding LeftoversOpen, Converter={StaticResource BoolVis}}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="🧹" FontSize="18" VerticalAlignment="Top" Margin="0,0,10,0"/>
+                                <TextBlock Text="{Binding LeftoversTitle}" FontSize="13.5" FontWeight="SemiBold" TextWrapping="Wrap" MaxWidth="760"/>
+                            </StackPanel>
+                            <ListBox Grid.Row="1" Style="{StaticResource DarkList}" Margin="0,10,0,10" ItemsSource="{Binding Leftovers}">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="32"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="110"/>
+                                                <ColumnDefinition Width="90"/>
+                                            </Grid.ColumnDefinitions>
+                                            <CheckBox Grid.Column="0" IsChecked="{Binding Selected}" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding Glyph}" FontSize="15" TextAlignment="Center" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="2" Text="{Binding Display}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                                                       ToolTip="{Binding Display}" Margin="4,0,10,0"/>
+                                            <TextBlock Grid.Column="3" Text="{Binding KindText}" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="4" Text="{Binding SizeText}" Foreground="{DynamicResource MutedBrush}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
+                                <Button Content="{Binding [lo_close], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}" Margin="0,0,8,0"
+                                        Command="{Binding CloseLeftoversCommand}"/>
+                                <Button Content="{Binding [lo_remove], Source={x:Static loc:Loc.I}}" Style="{StaticResource DangerButton}" Padding="16,8"
+                                        Command="{Binding RemoveLeftoversCommand}"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
                 </Grid>
 
                 <!-- ===== Страница: Поиск файлов (клон WizTree) ===== -->
@@ -1756,6 +1799,7 @@
                                      Visibility="{Binding IsLaptop, Converter={StaticResource BoolVis}}"/>
                         <RadioButton x:Name="DgTabBoot" Content="{Binding [dg_tab_boot], Source={x:Static loc:Loc.I}}" Style="{StaticResource NavButton}" GroupName="diagsub"/>
                         <RadioButton x:Name="DgTabHw" Content="{Binding [dg_tab_hw], Source={x:Static loc:Loc.I}}" Style="{StaticResource NavButton}" GroupName="diagsub"/>
+                        <RadioButton x:Name="DgTabCrashes" Content="{Binding [dg_tab_crashes], Source={x:Static loc:Loc.I}}" Style="{StaticResource NavButton}" GroupName="diagsub"/>
                     </StackPanel>
 
                     <Grid Grid.Row="2">
@@ -2146,6 +2190,57 @@
                                 </Grid>
                             </ScrollViewer>
                         </Grid>
+
+                        <!-- ===== Сбои: синие экраны и внезапные выключения (журнал Windows) ===== -->
+                        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                      Visibility="{Binding IsChecked, ElementName=DgTabCrashes, Converter={StaticResource BoolVis}}">
+                            <Border Style="{StaticResource Card}" Padding="18" Margin="6,0,6,6" VerticalAlignment="Top">
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="🛑" FontSize="20" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                        <TextBlock Text="{Binding [cr_title], Source={x:Static loc:Loc.I}}" FontSize="16" FontWeight="Bold" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding CrashSummary}" Foreground="{DynamicResource MutedBrush}" Margin="0,8,0,0" TextWrapping="Wrap"/>
+                                    <TextBlock Text="{Binding CrashRepeat}" Foreground="{DynamicResource AccentTextBrush}" FontWeight="SemiBold" Margin="0,6,0,0" TextWrapping="Wrap"
+                                               Visibility="{Binding HasCrashRepeat, Converter={StaticResource BoolVis}}"/>
+                                    <ItemsControl ItemsSource="{Binding Crashes}" Margin="0,12,0,0">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Background="{DynamicResource CtrlFillBrush}" BorderBrush="{DynamicResource CtrlBorderBrush}" BorderThickness="1"
+                                                        CornerRadius="12" Padding="14,12" Margin="0,0,0,8">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="170"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                                            <TextBlock Text="{Binding WhenText}" FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                                            <Border CornerRadius="9" Padding="9,2" Margin="0,6,0,0" HorizontalAlignment="Left"
+                                                                    BorderBrush="{Binding KindBrush}" BorderThickness="1">
+                                                                <TextBlock Text="{Binding KindText}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding KindBrush}"/>
+                                                            </Border>
+                                                        </StackPanel>
+                                                        <StackPanel Grid.Column="1">
+                                                            <TextBlock Text="{Binding Title}" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                                            <TextBlock Text="{Binding CodeText}" FontSize="11" Foreground="{DynamicResource MutedBrush}" Margin="0,2,0,0"
+                                                                       Visibility="{Binding HasCode, Converter={StaticResource BoolVis}}"/>
+                                                            <TextBlock Text="{Binding Explain}" FontSize="12.5" TextWrapping="Wrap" Margin="0,6,0,0"
+                                                                       Visibility="{Binding HasExplain, Converter={StaticResource BoolVis}}"/>
+                                                            <TextBlock Text="{Binding Note}" FontSize="12.5" TextWrapping="Wrap" Margin="0,4,0,0"
+                                                                       Visibility="{Binding HasNote, Converter={StaticResource BoolVis}}"/>
+                                                            <TextBlock Text="{Binding Advice}" FontSize="12.5" TextWrapping="Wrap" Margin="0,6,0,0"
+                                                                       Foreground="{DynamicResource AccentTextBrush}" Visibility="{Binding HasAdvice, Converter={StaticResource BoolVis}}"/>
+                                                            <TextBlock Text="{Binding DumpText}" FontSize="11" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" Margin="0,6,0,0"
+                                                                       Visibility="{Binding HasDump, Converter={StaticResource BoolVis}}"/>
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+                        </ScrollViewer>
                     </Grid>
                 </Grid>
 

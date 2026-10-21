@@ -165,6 +165,7 @@ public sealed partial class MainViewModel : ViewModelBase
         RevertAllCommand = new RelayCommand(async () => await RevertAllAsync(), () => !OptBusy && ChangeLog.Count > 0);
         ReloadChangeLog();
         InitDiagnostics();
+        InitLeftovers();
         ExportReportCommand = new RelayCommand(ExportReport);
         CheckUpdatesCommand = new RelayCommand(async () => await CheckUpdatesAsync(true), () => !UpdateBusy);
         OpenReleaseCommand = new RelayCommand(OpenRelease, () => !UpdateBusy);
@@ -263,7 +264,7 @@ public sealed partial class MainViewModel : ViewModelBase
             MaintenanceService.SfcAnalyze, MaintenanceService.SfcRun,
             "mnt_st_sfc_check", "mnt_st_sfc_run", "mnt_done",
             interpret: MaintenanceService.InterpretSfc, unicode: true, servicing: true));
-        MaintenanceTasks.Add(new MaintenanceTaskVm("🩺", "mnt_dism", "mnt_dism_d",
+        MaintenanceTasks.Add(new MaintenanceTaskVm("💿", "mnt_dism", "mnt_dism_d",
             MaintenanceService.DismAnalyze, MaintenanceService.DismRun,
             "mnt_st_dism_check", "mnt_st_dism_run", "mnt_done",
             interpret: MaintenanceService.InterpretDism, servicing: true));
@@ -1290,6 +1291,7 @@ public sealed partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(RecChanceHeader));
         BuildHardwareCards();           // «Железо» + плитки сводки - из уже прочитанных данных, без повторного опроса
         BuildBootView();
+        BuildCrashView();
         RebuildDiagTiles();
     }
 
@@ -1785,8 +1787,11 @@ public sealed partial class MainViewModel : ViewModelBase
                 System.Windows.MessageBoxImage.Question) != System.Windows.MessageBoxResult.Yes)
             return;
 
+        // снимок ДО удаления: после деинсталлятора записи программы в реестре уже не будет
+        var print = sel.App.IsUwp ? null : LeftoverService.Print(sel.App);
         bool ok = InstalledAppsService.LaunchUninstall(sel.App);
-        AppsNote = string.Format(Loc.I[ok ? "ap_uninst_ok" : "ap_uninst_fail"], sel.Name);
+        AppsNote = string.Format(Loc.I[!ok ? "ap_uninst_fail" : print != null ? "ap_uninst_ok" : "ap_uninst_ok_uwp"], sel.Name);
+        if (ok && print != null) _ = WatchUninstallAsync(sel.App, print);
     }
 
     // ---------- Реестр ----------

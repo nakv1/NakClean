@@ -17,6 +17,16 @@ public static class InstalledAppsService
 {
     private const string UninstallPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall";
 
+    /// <summary>Только программы из реестра (без Store-приложений) - быстро, без запуска PowerShell.</summary>
+    public static List<InstalledApp> GetRegistryApps()
+    {
+        var byName = new Dictionary<string, InstalledApp>(StringComparer.OrdinalIgnoreCase);
+        Read(RegistryHive.LocalMachine, RegistryView.Registry64, byName);
+        Read(RegistryHive.LocalMachine, RegistryView.Registry32, byName);
+        Read(RegistryHive.CurrentUser, RegistryView.Default, byName);
+        return byName.Values.ToList();
+    }
+
     public static List<InstalledApp> GetApps()
     {
         var byName = new Dictionary<string, InstalledApp>(StringComparer.OrdinalIgnoreCase);
@@ -126,6 +136,8 @@ public static class InstalledAppsService
                         UninstallString = k.GetValue("UninstallString") as string ?? "",
                         QuietUninstallString = k.GetValue("QuietUninstallString") as string ?? "",
                         ModifyPath = k.GetValue("ModifyPath") as string ?? "",
+                        InstallLocation = k.GetValue("InstallLocation") as string ?? "",
+                        DisplayIcon = k.GetValue("DisplayIcon") as string ?? "",
                         Hive = hive,
                         View = view,
                         SubKey = $"{UninstallPath}\\{sub}",
@@ -136,6 +148,19 @@ public static class InstalledAppsService
             }
         }
         catch { }
+    }
+
+    /// <summary>Запись программы в реестре всё ещё есть (деинсталлятор ещё не закончил или его закрыли).</summary>
+    public static bool StillInstalled(InstalledApp app)
+    {
+        if (app.IsUwp || string.IsNullOrEmpty(app.SubKey)) return false;
+        try
+        {
+            using var baseKey = RegistryKey.OpenBaseKey(app.Hive, app.View);
+            using var k = baseKey.OpenSubKey(app.SubKey);
+            return k != null;
+        }
+        catch { return true; }   // не знаем - считаем, что ещё стоит
     }
 
     /// <summary>Запускает штатный деинсталлятор программы. true = удалось запустить.</summary>

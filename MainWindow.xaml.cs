@@ -236,6 +236,7 @@ public partial class MainWindow : Window
             "battery" => DgTabBattery,
             "boot" => DgTabBoot,
             "hw" => DgTabHw,
+            "crashes" => DgTabCrashes,
             _ => null,
         };
         if (tab != null) tab.IsChecked = true;

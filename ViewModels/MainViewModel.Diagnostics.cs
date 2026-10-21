@@ -122,7 +122,7 @@ public sealed partial class MainViewModel
         DiagBusy = true;
         try
         {
-            var tasks = new List<Task> { LoadDiskHealthAsync(diskMaxAge), LoadBootAsync(), LoadHardwareAsync() };
+            var tasks = new List<Task> { LoadDiskHealthAsync(diskMaxAge), LoadBootAsync(), LoadHardwareAsync(), LoadCrashesAsync() };
             if (IsLaptop) tasks.Add(LoadBatteryAsync());
             await Task.WhenAll(tasks);
         }
@@ -362,6 +362,9 @@ public sealed partial class MainViewModel
             Value = _bootSeconds > 0 ? $"{_bootSeconds} {Loc.I["u_sec"]}" : Loc.I["hw_na"],
             Note = _bootSeconds > 0 ? Loc.I["dg_boot_note"] : "",
         });
+
+        // сбои: синие экраны и внезапные выключения за 30 дней
+        DiagTiles.Add(CrashTile());
 
         if (_hw is { } hw)
         {
