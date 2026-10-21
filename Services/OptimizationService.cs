@@ -393,9 +393,10 @@ public static class OptimizationService
     public static (RestorePointResult Result, DateTime? Last) CreateRestorePoint(string description)
     {
         var before = LatestRestorePoint();
+        // ждём, пока Windows закончит (обычно секунды, на занятой системе - дольше); 10 минут - только страховка от зависания
         RunProc("powershell.exe",
             $"-NoProfile -NonInteractive -Command \"Checkpoint-Computer -Description '{description.Replace("'", "''")}' -RestorePointType 'MODIFY_SETTINGS'\"",
-            120000);
+            600_000);
         var after = LatestRestorePoint();
 
         if (after is { } a && (before is null || a.Seq > before.Value.Seq)) return (RestorePointResult.Created, a.When);

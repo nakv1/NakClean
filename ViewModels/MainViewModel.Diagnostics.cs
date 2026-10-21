@@ -102,7 +102,7 @@ public sealed partial class MainViewModel
 
     private void InitDiagnostics()
     {
-        RefreshDiagCommand = new RelayCommand(async () => await RefreshDiagnosticsAsync(), () => !DiagBusy);
+        RefreshDiagCommand = new RelayCommand(async () => await RefreshDiagnosticsAsync(TimeSpan.Zero), () => !DiagBusy);
         CopyAllHwCommand = new RelayCommand(() =>
         {
             if (HwCards.Count == 0) return;
@@ -116,13 +116,13 @@ public sealed partial class MainViewModel
     }
 
     /// <summary>Перечитать всё сразу: диски, батарею, загрузку, железо (параллельно).</summary>
-    private async Task RefreshDiagnosticsAsync()
+    private async Task RefreshDiagnosticsAsync(TimeSpan diskMaxAge)
     {
         if (DiagBusy) return;
         DiagBusy = true;
         try
         {
-            var tasks = new List<Task> { LoadDiskHealthAsync(), LoadBootAsync(), LoadHardwareAsync() };
+            var tasks = new List<Task> { LoadDiskHealthAsync(diskMaxAge), LoadBootAsync(), LoadHardwareAsync() };
             if (IsLaptop) tasks.Add(LoadBatteryAsync());
             await Task.WhenAll(tasks);
         }

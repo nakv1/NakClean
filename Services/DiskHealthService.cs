@@ -16,7 +16,36 @@ public static class DiskHealthService
 {
     private const string Scope = @"\\.\root\Microsoft\Windows\Storage";
 
-    public static List<DiskHealth> GetDisks()
+    // Один опрос на всю программу: «Проверка ПК» и «Диагностика» берут общий результат,
+    // а не дёргают диски каждая по-своему (и не ждут друг друга на занятом диске).
+    private static readonly object Gate = new();
+    private static Task<List<DiskHealth>>? _running;
+    private static List<DiskHealth>? _last;
+    private static DateTime _lastAt;
+
+    /// <summary>
+    /// Диски с кэшем. Есть результат не старше <paramref name="maxAge"/> - отдаём его без опроса;
+    /// опрос уже идёт - ждём его, второй не запускаем. TimeSpan.Zero = нужен свежий (кнопка «Обновить»).
+    /// </summary>
+    public static List<DiskHealth> GetDisks(TimeSpan maxAge)
+    {
+        Task<List<DiskHealth>> t;
+        lock (Gate)
+        {
+            if (_last is not null && DateTime.UtcNow - _lastAt <= maxAge) return _last;
+            t = _running ??= Task.Run(() =>
+            {
+                var r = new List<DiskHealth>();
+                try { r = Poll(); }
+                // пустой результат (сбой опроса) не запоминаем - следующий вызов попробует снова
+                finally { lock (Gate) { if (r.Count > 0) { _last = r; _lastAt = DateTime.UtcNow; } _running = null; } }
+                return r;
+            });
+        }
+        return t.GetAwaiter().GetResult();
+    }
+
+    private static List<DiskHealth> Poll()
     {
         var result = new List<DiskHealth>();
         try

@@ -12,14 +12,15 @@ namespace NakClean.Services;
 /// </summary>
 public static class HealthCheckService
 {
-    public static (int score, List<HealthItem> items) Run()
+    /// <param name="diskMaxAge">Насколько старый общий результат опроса дисков подходит (см. DiskHealthService.GetDisks).</param>
+    public static (int score, List<HealthItem> items) Run(TimeSpan diskMaxAge)
     {
         var items = new List<HealthItem>();
 
         CheckMemory(items);
         CheckMemoryTest(items);
         CheckDiskSpace(items);
-        CheckSmart(items);
+        CheckSmart(items, diskMaxAge);
         CheckDefender(items);
         CheckDrivers(items);
         CheckUptime(items);
@@ -102,9 +103,9 @@ public static class HealthCheckService
         }
     }
 
-    private static void CheckSmart(List<HealthItem> items)
+    private static void CheckSmart(List<HealthItem> items, TimeSpan diskMaxAge)
     {
-        foreach (var disk in DiskHealthService.GetDisks())
+        foreach (var disk in DiskHealthService.GetDisks(diskMaxAge))
         {
             var level = disk.State switch
             {

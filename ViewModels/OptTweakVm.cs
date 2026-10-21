@@ -11,7 +11,7 @@ public sealed class OptTweakVm : ViewModelBase
     {
         Tweak = t;
         _applied = t.IsApplied();
-        _selected = t.TierKey == OptimizationService.Safe; // безопасные предвыбраны
+        // ничего не предвыбрано: человек сам отмечает нужное (или жмёт профиль)
     }
 
     public string Name => Loc.I[Tweak.NameKey];

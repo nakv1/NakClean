@@ -35,12 +35,29 @@ public sealed class RecoveryFileVm : ViewModelBase
         }
     }
 
+    /// <summary>Вторая строка: где лежал; для файлов из корзины - исходная папка и когда отправлен в корзину.</summary>
+    public string PathText => File.RecycledAt is { } when
+        ? $"{File.Path}  ·  " + string.Format(Loc.I["rec_from_bin"],
+            when.ToString("g", System.Globalization.CultureInfo.GetCultureInfo(Loc.I.IsEn ? "en-US" : "ru-RU")))
+        : File.Path;
+
     public string ChanceText => File.Chance switch
     {
         2 => Loc.I["rec_high"],
         1 => Loc.I["rec_mid"],
         0 => Loc.I["rec_low"],
+        DeletedFile.ChanceOverwritten => Loc.I["rec_overwritten"],
+        DeletedFile.ChanceService => Loc.I["rec_service"],
         _ => Loc.I["rec_wiped"],
+    };
+
+    /// <summary>Пояснение к метке (подсказка при наведении) - только для «нельзя восстановить».</summary>
+    public string? ChanceTip => File.Chance switch
+    {
+        DeletedFile.ChanceWiped => Loc.I["rec_tip_wiped"],
+        DeletedFile.ChanceOverwritten => Loc.I["rec_tip_overwritten"],
+        DeletedFile.ChanceService => Loc.I["rec_tip_service"],
+        _ => null,
     };
 
     public Brush ChanceBrush => File.Chance switch

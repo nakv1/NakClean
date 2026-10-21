@@ -93,6 +93,7 @@ public sealed partial class MainViewModel : ViewModelBase
     public RelayCommand OpenWhatsNewPageCommand { get; }
     public RelayCommand ScanDeletedCommand { get; }
     public RelayCommand RecoverSelectedCommand { get; }
+    public RelayCommand FindCopiesCommand { get; }
     public RelayCommand SelectCategoryCommand { get; }
 
     public MainViewModel()
@@ -114,7 +115,7 @@ public sealed partial class MainViewModel : ViewModelBase
         RefreshCommand = new RelayCommand(RefreshDisks, () => !IsBusy);
         SelectAllCommand = new RelayCommand(() => SetAll(true));
         SelectNoneCommand = new RelayCommand(() => SetAll(false));
-        RunHealthCheckCommand = new RelayCommand(async () => await RunHealthCheckAsync());
+        RunHealthCheckCommand = new RelayCommand(async () => await RunHealthCheckAsync(TimeSpan.Zero));
         RefreshStartupCommand = new RelayCommand(async () => await LoadStartupAsync());
         EnableStartupCommand = new RelayCommand(() => ToggleStartup(true), () => SelectedStartup != null);
         DisableStartupCommand = new RelayCommand(() => ToggleStartup(false), () => SelectedStartup != null);
@@ -173,7 +174,9 @@ public sealed partial class MainViewModel : ViewModelBase
         OpenWhatsNewPageCommand = new RelayCommand(OpenWhatsNewPage);
         ScanDeletedCommand = new RelayCommand(async () => await ScanDeletedAsync(), () => !RecoveryBusy);
         RecoverSelectedCommand = new RelayCommand(async () => await RecoverSelectedAsync(), () => !RecoveryBusy);
+        FindCopiesCommand = new RelayCommand(async () => await FindCopiesAsync(), () => !RecoveryBusy);
         SelectCategoryCommand = new RelayCommand(p => SelectCategory(p as string ?? "all"));
+        SortRecoveryCommand = new RelayCommand(p => SortRecovery(p as string));
         RecoveredView = CollectionViewSource.GetDefaultView(Recovered);
         RecoveredView.Filter = RecoveryFilter;
         BuildRecoveryDrives();
@@ -200,7 +203,8 @@ public sealed partial class MainViewModel : ViewModelBase
         UpdateService.CleanupOld();
         if (Environment.GetCommandLineArgs().Contains(UpdateService.UpdatedArg))
             ToastService.Ok(string.Format(Loc.I["upd_done"], AppVersionShort));
-        Loc.I.PropertyChanged += (_, _) => OnLanguageChanged();
+        // Loc шлёт два события на одну смену языка («Item[]» и «Lang») - перестраиваемся один раз
+        Loc.I.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(Loc.Lang)) OnLanguageChanged(); };
         Native.GetCpuUsage(); // первый замер-«нулёвка» для CPU
 
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
@@ -225,7 +229,7 @@ public sealed partial class MainViewModel : ViewModelBase
     {
         if (_healthLoaded) return;
         _healthLoaded = true;
-        _ = RunHealthCheckAsync();
+        _ = RunHealthCheckAsync(AutoDiskMaxAge);
     }
 
     public void EnsureStartupLoaded()
@@ -249,7 +253,7 @@ public sealed partial class MainViewModel : ViewModelBase
     {
         if (_diagLoaded) return;
         _diagLoaded = true;
-        _ = RefreshDiagnosticsAsync();
+        _ = RefreshDiagnosticsAsync(AutoDiskMaxAge);
     }
 
     // ---------- Обслуживание системы ----------
@@ -258,15 +262,15 @@ public sealed partial class MainViewModel : ViewModelBase
         MaintenanceTasks.Add(new MaintenanceTaskVm("🛡", "mnt_sfc", "mnt_sfc_d",
             MaintenanceService.SfcAnalyze, MaintenanceService.SfcRun,
             "mnt_st_sfc_check", "mnt_st_sfc_run", "mnt_done",
-            interpret: MaintenanceService.InterpretSfc, unicode: true));
+            interpret: MaintenanceService.InterpretSfc, unicode: true, servicing: true));
         MaintenanceTasks.Add(new MaintenanceTaskVm("🩺", "mnt_dism", "mnt_dism_d",
             MaintenanceService.DismAnalyze, MaintenanceService.DismRun,
             "mnt_st_dism_check", "mnt_st_dism_run", "mnt_done",
-            interpret: MaintenanceService.InterpretDism));
+            interpret: MaintenanceService.InterpretDism, servicing: true));
         MaintenanceTasks.Add(new MaintenanceTaskVm("📦", "mnt_winsxs", "mnt_winsxs_d",
             MaintenanceService.WinsxsAnalyze, MaintenanceService.WinsxsRun,
             "mnt_st_winsxs_check", "mnt_st_winsxs_run", "mnt_done_freed",
-            interpret: MaintenanceService.InterpretWinsxs));
+            interpret: MaintenanceService.InterpretWinsxs, servicing: true));
         MaintenanceTasks.Add(new MaintenanceTaskVm("💽", "mnt_defrag", "mnt_defrag_d",
             null, MaintenanceService.DefragRun,
             "mnt_st_defrag_check", "mnt_st_defrag_run", "mnt_done",
@@ -825,11 +829,98 @@ public sealed partial class MainViewModel : ViewModelBase
     private void RebuildCategories()
     {
         RecoveryCategories.Clear();
-        _categoryFilter = "all";
-        RecoveryCategories.Add(new RecoveryCategoryVm { Key = "all", Name = Loc.I["rec_all"], Count = Recovered.Count, IsSelected = true });
+        // выбранный раздел сохраняем, если он есть в новых результатах (поиск не сбрасывает «Изображения»)
+        if (_categoryFilter != "all" && !Recovered.Any(r => r.Category == _categoryFilter)) _categoryFilter = "all";
+        RecoveryCategories.Add(new RecoveryCategoryVm { Key = "all", Name = Loc.I["rec_all"], Count = Recovered.Count, IsSelected = _categoryFilter == "all" });
         foreach (var g in Recovered.GroupBy(r => r.Category).OrderByDescending(g => g.Count()))
-            RecoveryCategories.Add(new RecoveryCategoryVm { Key = g.Key, Name = g.Key, Count = g.Count() });
+            RecoveryCategories.Add(new RecoveryCategoryVm { Key = g.Key, Name = g.Key, Count = g.Count(), IsSelected = g.Key == _categoryFilter });
         RecoveredView.Refresh();
+    }
+
+    // ---------- поиск и сортировка по ВСЕМ найденным (на экране - первые RecoveryTake) ----------
+    private const int RecoveryTake = 5000;
+    private List<DeletedFile> _allDeleted = new();
+    // карточки кэшируем по файлу: отмеченное галочкой не теряется, когда меняешь запрос или сортировку
+    private readonly Dictionary<DeletedFile, RecoveryFileVm> _recVms = new(ReferenceEqualityComparer.Instance);
+    private CancellationTokenSource? _recSearchCts;
+    private bool _recScanned;   // до первого сканирования поиск ничего не пишет (иначе «не найдено» - неправда)
+
+    private string _recoverySearch = "";
+    public string RecoverySearch
+    {
+        get => _recoverySearch;
+        set
+        {
+            if (!Set(ref _recoverySearch, value)) return;
+            OnPropertyChanged(nameof(RecoverySearchEmpty));
+            _ = ApplyRecoveryQueryAsync(200);   // небольшая пауза: не пересчитываем на каждую букву
+        }
+    }
+    public bool RecoverySearchEmpty => _recoverySearch.Length == 0;
+
+    private string _recSort = "chance";   // chance / name / size
+    private bool _recDesc = true;
+    public string RecNameHeader => RecHeader("fs_c_name", "name");
+    public string RecSizeHeader => RecHeader("fs_c_size", "size");
+    public string RecChanceHeader => RecHeader("rec_c_chance", "chance");
+    private string RecHeader(string key, string sort) => Loc.I[key] + (_recSort == sort ? (_recDesc ? "  ▼" : "  ▲") : "");
+    public RelayCommand SortRecoveryCommand { get; private set; } = null!;
+
+    private void SortRecovery(string? key)
+    {
+        key ??= "chance";
+        if (key == _recSort) _recDesc = !_recDesc;
+        else { _recSort = key; _recDesc = key != "name"; }   // размер и шанс - сначала большие, имя - от А
+        OnPropertyChanged(nameof(RecNameHeader));
+        OnPropertyChanged(nameof(RecSizeHeader));
+        OnPropertyChanged(nameof(RecChanceHeader));
+        _ = ApplyRecoveryQueryAsync(0);
+    }
+
+    private async Task ApplyRecoveryQueryAsync(int delayMs)
+    {
+        if (!_recScanned) return;
+        _recSearchCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _recSearchCts = cts;
+        try
+        {
+            if (delayMs > 0) await Task.Delay(delayMs, cts.Token);
+            var all = _allDeleted;
+            var q = SearchQuery.Parse(_recoverySearch, "all");
+            string sort = _recSort; bool desc = _recDesc;
+
+            var (rows, matched) = await Task.Run(() =>
+            {
+                var hits = q.IsEmpty ? all : all.Where(f => q.IsMatch(f.Name, false)).ToList();
+                IEnumerable<DeletedFile> ordered = sort switch
+                {
+                    "name" => desc ? hits.OrderByDescending(f => f.Name, StringComparer.CurrentCultureIgnoreCase)
+                                   : hits.OrderBy(f => f.Name, StringComparer.CurrentCultureIgnoreCase),
+                    "size" => desc ? hits.OrderByDescending(f => f.Size) : hits.OrderBy(f => f.Size),
+                    _ => desc ? hits.OrderByDescending(f => f.Chance).ThenByDescending(f => f.Size)
+                              : hits.OrderBy(f => f.Chance).ThenByDescending(f => f.Size),
+                };
+                return (ordered.Take(RecoveryTake).ToList(), hits.Count);
+            }, cts.Token);
+            if (cts.IsCancellationRequested) return;
+
+            Recovered.Clear();
+            foreach (var f in rows)
+            {
+                if (!_recVms.TryGetValue(f, out var vm)) _recVms[f] = vm = new RecoveryFileVm(f);
+                Recovered.Add(vm);
+            }
+            RebuildCategories();
+
+            if (all.Count == 0) { RecoveryNote = Loc.I["rec_empty"]; return; }
+            string note = q.IsEmpty
+                ? string.Format(Loc.I["rec_found"], all.Count.ToString("N0"))
+                : string.Format(Loc.I["rec_found_q"], matched.ToString("N0"), all.Count.ToString("N0"));
+            if (matched > RecoveryTake) note += string.Format(Loc.I[q.IsEmpty ? "rec_top" : "rec_top_q"], RecoveryTake.ToString("N0"));
+            RecoveryNote = note;
+        }
+        catch (OperationCanceledException) { }
     }
 
     private string? _selectedRecoveryDrive;
@@ -845,6 +936,7 @@ public sealed partial class MainViewModel : ViewModelBase
             OnPropertyChanged(nameof(RecoveryIdle));
             ScanDeletedCommand.RaiseCanExecuteChanged();
             RecoverSelectedCommand.RaiseCanExecuteChanged();
+            FindCopiesCommand.RaiseCanExecuteChanged();
         }
     }
     public bool RecoveryIdle => !RecoveryBusy;
@@ -878,27 +970,27 @@ public sealed partial class MainViewModel : ViewModelBase
         RecoveryNote = Loc.I["rec_scanning"];
         Recovered.Clear();
         RecoveryCategories.Clear();
+        _recSearchCts?.Cancel();
+        _allDeleted = new();
+        _recVms.Clear();
         try
         {
-            var list = await Task.Run(() => NtfsMftReader.EnumerateDeleted(letter, CancellationToken.None));
-            foreach (var f in list.OrderByDescending(x => x.Chance).ThenByDescending(x => x.Size).Take(5000))
-                Recovered.Add(new RecoveryFileVm(f));
-            RebuildCategories();
-            RecoveryNote = Recovered.Count == 0
-                ? Loc.I["rec_empty"]
-                : string.Format(Loc.I["rec_found"], Recovered.Count);
+            _allDeleted = await Task.Run(() => NtfsMftReader.EnumerateDeleted(letter, CancellationToken.None));
+            _recScanned = true;
+            await ApplyRecoveryQueryAsync(0);   // с учётом уже введённого запроса и сортировки
         }
         catch (Exception ex) { RecoveryNote = string.Format(Loc.I["err"], ex.Message); }
         finally
         {
             RecoveryBusy = false;
-            ReleaseMemory();   // весь список удалённых из MFT больше не нужен - на экране только топ-5000
+            ReleaseMemory();   // мусор от чтения MFT; сам список найденного держим - по нему ищем
         }
     }
 
     private async Task RecoverSelectedAsync()
     {
-        var sel = Recovered.Where(r => r.Selected).ToList();
+        // все отмеченные, включая скрытые поиском или разделом (галочка запоминается)
+        var sel = _recVms.Values.Where(r => r.Selected).ToList();
         if (sel.Count == 0) { RecoveryNote = Loc.I["rec_nosel"]; return; }
 
         var dlg = new Microsoft.Win32.OpenFolderDialog { Title = Loc.I["rec_pickdest"] };
@@ -908,11 +1000,29 @@ public sealed partial class MainViewModel : ViewModelBase
         // нельзя восстанавливать на тот же диск - можно затереть данные
         char src = sel[0].File.Drive;
         string? destRoot = System.IO.Path.GetPathRoot(dest)?.TrimEnd('\\');
-        if (destRoot != null && destRoot.StartsWith(src.ToString(), StringComparison.OrdinalIgnoreCase))
+        bool sameDrive = destRoot != null && destRoot.StartsWith(src.ToString(), StringComparison.OrdinalIgnoreCase);
+        if (sameDrive)
         {
+            // объясняем, куда можно; «всё равно сюда» - только на крайний случай, по умолчанию «Нет»
             RecoveryNote = Loc.I["rec_samedrive"];
-            ToastService.Warn(Loc.I["rec_samedrive"]);
-            return;
+            if (System.Windows.MessageBox.Show(
+                    string.Format(Loc.I["rec_samedrive_long"], src + ":") + "\n\n" + Loc.I["rec_samedrive_q"], "NakClean",
+                    System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Warning,
+                    System.Windows.MessageBoxResult.No) != System.Windows.MessageBoxResult.Yes)
+                return;
+
+            // всё отмеченное должно поместиться в память: файл до 2 ГБ, вместе - не больше половины свободной ОЗУ
+            // (если памяти не хватит, Windows начнёт писать в файл подкачки - а он на этом же диске)
+            var (memTotal, memUsed, _) = Native.GetMemory();
+            long budget = (long)(memTotal - memUsed) / 2;
+            long need = sel.Sum(r => r.File.Size);
+            if (sel.Any(r => r.File.Size > int.MaxValue) || need > budget)
+            {
+                RecoveryNote = string.Format(Loc.I["rec_samedrive_big"], Format.Bytes(need), Format.Bytes(budget));
+                System.Windows.MessageBox.Show(RecoveryNote, "NakClean",
+                    System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
+                return;
+            }
         }
 
         RecoveryBusy = true;
@@ -920,15 +1030,130 @@ public sealed partial class MainViewModel : ViewModelBase
         int ok = 0, fail = 0;
         await Task.Run(() =>
         {
-            foreach (var r in sel)
+            if (!sameDrive)
             {
-                string target = UniquePath(dest, r.File.Name);
-                if (NtfsMftReader.Recover(r.File, target)) ok++; else fail++;
+                foreach (var r in sel)
+                {
+                    string target = UniquePath(dest, r.File.Name);
+                    if (NtfsMftReader.Recover(r.File, target)) ok++; else fail++;
+                }
+                return;
+            }
+
+            // тот же диск: сначала ВСЁ прочитать, и только потом писать - иначе запись ляжет поверх ещё не прочитанного
+            var data = sel.Select(r => (r, bytes: NtfsMftReader.ReadContent(r.File))).ToList();
+            foreach (var (r, bytes) in data)
+            {
+                if (bytes is null) { fail++; continue; }
+                try { System.IO.File.WriteAllBytes(UniquePath(dest, r.File.Name), bytes); ok++; }
+                catch { fail++; }
             }
         });
         RecoveryBusy = false;
+        if (sameDrive) ReleaseMemory();   // прочитанное в память больше не нужно
         RecoveryNote = string.Format(Loc.I["rec_done"], ok, fail);
         ToastService.Ok(string.Format(Loc.I["rec_done"], ok, fail));
+    }
+
+    /// <summary>
+    /// «Найти копии»: когда сам файл стёрт (SSD) или перезаписан, ищем его копии - в снимках Windows,
+    /// автосохранениях Office и файлы с тем же именем на всех дисках (общий индекс «Поиска файлов»).
+    /// </summary>
+    private async Task FindCopiesAsync()
+    {
+        var sel = _recVms.Values.Where(r => r.Selected).Take(20).ToList();
+        if (sel.Count == 0) { RecoveryNote = Loc.I["cp_nosel"]; return; }
+
+        RecoveryBusy = true;
+        RecoveryNote = Loc.I["cp_searching"];
+        List<(RecoveryFileVm file, List<FoundCopy> copies, int shadows)> results;
+        try
+        {
+            // индекс всех дисков: если «Поиск файлов» ещё не открывали - читаем сейчас (те же секунды)
+            if (!_index.IsReady && !IndexBusy) await BuildIndexAsync();
+            while (IndexBusy) await Task.Delay(200);
+
+            results = await Task.Run(() =>
+            {
+                var list = new List<(RecoveryFileVm, List<FoundCopy>, int)>();
+                foreach (var r in sel)
+                {
+                    var (copies, shadows) = CopyFinder.FromShadowCopies(r.File.Path);
+                    copies.AddRange(CopyFinder.FromOfficeAutosave(r.File.Name));
+                    if (_index.IsReady)
+                    {
+                        var res = _index.Search(SearchQuery.Parse(r.File.Name, "all"), null, SearchSort.Date, true, 200, CancellationToken.None);
+                        foreach (var row in res.Rows.Where(x => !x.IsDir && x.Name.Equals(r.File.Name, StringComparison.OrdinalIgnoreCase)))
+                            copies.Add(new FoundCopy(row.Path, "cp_src_disk",
+                                row.Modified > 0 ? DateTime.FromFileTimeUtc(row.Modified).ToLocalTime() : null, row.Size));
+                    }
+                    list.Add((r, copies.DistinctBy(c => c.Path, StringComparer.OrdinalIgnoreCase).ToList(), shadows));
+                }
+                return list;
+            });
+        }
+        catch (Exception ex)
+        {
+            RecoveryBusy = false;
+            RecoveryNote = string.Format(Loc.I["err"], ex.Message);
+            return;
+        }
+        RecoveryBusy = false;
+
+        var ru = System.Globalization.CultureInfo.GetCultureInfo(Loc.I.IsEn ? "en-US" : "ru-RU");
+        int total = results.Sum(x => x.copies.Count);
+        if (total == 0)
+        {
+            RecoveryNote = Loc.I["cp_none_note"];
+            string msg = Loc.I["cp_none"];
+            if (results.All(x => x.shadows == 0)) msg += "\n\n" + Loc.I["cp_no_shadows"];
+            System.Windows.MessageBox.Show(msg + "\n\n" + Loc.I["cp_manual"], "NakClean",
+                System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
+            return;
+        }
+
+        RecoveryNote = string.Format(Loc.I["cp_found_note"], total);
+        var sb = new System.Text.StringBuilder(Loc.I["cp_found"]).Append('\n');
+        foreach (var (file, copies, _) in results.Where(x => x.copies.Count > 0))
+        {
+            sb.Append('\n').Append(file.Name).Append(":\n");
+            foreach (var c in copies.Take(8))
+            {
+                string src = c.SourceKey switch
+                {
+                    "cp_src_shadow" => string.Format(Loc.I["cp_src_shadow"], c.When?.ToString("g", ru) ?? "?"),
+                    "cp_src_office" => string.Format(Loc.I["cp_src_office"], System.IO.Path.GetFileName(c.Path)),
+                    _ => string.Format(Loc.I["cp_src_disk"], c.Path),
+                };
+                sb.Append("   •  ").Append(src).Append("  (").Append(Format.Bytes(c.Size)).Append(")\n");
+            }
+            if (copies.Count > 8) sb.Append("   …\n");
+        }
+        sb.Append('\n').Append(Loc.I["cp_save_q"]);
+        if (System.Windows.MessageBox.Show(sb.ToString(), "NakClean", System.Windows.MessageBoxButton.YesNo,
+                System.Windows.MessageBoxImage.Question) != System.Windows.MessageBoxResult.Yes)
+            return;
+
+        var dlg = new Microsoft.Win32.OpenFolderDialog { Title = Loc.I["cp_pickdest"] };
+        if (dlg.ShowDialog() != true) return;
+        string dest = dlg.FolderName;
+
+        RecoveryBusy = true;
+        int ok = 0, fail = 0;
+        await Task.Run(() =>
+        {
+            foreach (var (file, copies, _) in results)
+                foreach (var c in copies)
+                {
+                    // копия Office-автосохранения сохраняет своё имя (.asd и т.п.), остальные - имя документа
+                    string name = c.SourceKey == "cp_src_office" ? System.IO.Path.GetFileName(c.Path) : file.Name;
+                    try { System.IO.File.Copy(c.Path, UniquePath(dest, name)); ok++; }
+                    catch { fail++; }
+                }
+        });
+        RecoveryBusy = false;
+        RecoveryNote = string.Format(Loc.I["cp_done"], ok, fail);
+        ToastService.Ok(RecoveryNote);
     }
 
     private static string UniquePath(string dir, string name)
@@ -1031,9 +1256,10 @@ public sealed partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(SessionFreedLine));
         ReloadChangeLog();   // журнал — перечитать локализованные имена
 
-        // проверка ПК: вердикт + перезапуск проверки на новом языке (фон)
+        // проверка ПК: вердикт + перезапуск проверки на новом языке (фон) - только если её уже открывали;
+        // диски не опрашиваем заново, берём прочитанные
         OnPropertyChanged(nameof(ScoreVerdict));
-        _ = RunHealthCheckAsync();
+        if (_healthLoaded) _ = RunHealthCheckAsync(TimeSpan.MaxValue);
 
         // о программе
         OnPropertyChanged(nameof(AppTagline));
@@ -1054,6 +1280,9 @@ public sealed partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(MapTitle));
         LoadDrives();                   // пересобрать подписи дисков на новом языке
         OnSearchLanguageChanged();
+        OnPropertyChanged(nameof(RecNameHeader));
+        OnPropertyChanged(nameof(RecSizeHeader));
+        OnPropertyChanged(nameof(RecChanceHeader));
         BuildHardwareCards();           // «Железо» + плитки сводки - из уже прочитанных данных, без повторного опроса
         BuildBootView();
         RebuildDiagTiles();
@@ -1257,11 +1486,17 @@ public sealed partial class MainViewModel : ViewModelBase
 
     private List<Models.DiskHealth> _diskModels = new();
 
-    private async Task LoadDiskHealthAsync()
+    /// <summary>
+    /// При первом открытии вкладки диски, прочитанные другой вкладкой за последние 2 минуты, не опрашиваем заново.
+    /// Кнопки «Обновить» / «Проверить заново» всегда читают свежие (TimeSpan.Zero).
+    /// </summary>
+    private static readonly TimeSpan AutoDiskMaxAge = TimeSpan.FromMinutes(2);
+
+    private async Task LoadDiskHealthAsync(TimeSpan maxAge)
     {
         try
         {
-            _diskModels = await Task.Run(DiskHealthService.GetDisks);
+            _diskModels = await Task.Run(() => DiskHealthService.GetDisks(maxAge));
         }
         catch
         {
@@ -1307,13 +1542,13 @@ public sealed partial class MainViewModel : ViewModelBase
     private string _healthCheckNote = Loc.I["note_healthcheck"];
     public string HealthCheckNote { get => _healthCheckNote; private set => Set(ref _healthCheckNote, value); }
 
-    private async Task RunHealthCheckAsync()
+    private async Task RunHealthCheckAsync(TimeSpan diskMaxAge)
     {
         HealthChecking = true;
         HealthCheckNote = Loc.I["note_healthcheck"];
         try
         {
-            var (score, items) = await Task.Run(HealthCheckService.Run);
+            var (score, items) = await Task.Run(() => HealthCheckService.Run(diskMaxAge));
             Score = score;
             HealthBad = items.Count(i => i.Level == CheckLevel.Bad);
             HealthWarn = items.Count(i => i.Level == CheckLevel.Warning);
@@ -1901,6 +2136,16 @@ public sealed partial class MainViewModel : ViewModelBase
                     RestorePointResult.RecentExists => string.Format(Loc.I["opt_rp_recent"], when),
                     _ => Loc.I["opt_rp_fail"],
                 };
+
+                // человек просил подстраховку, а её нет - без его согласия ничего не меняем
+                if (rp == RestorePointResult.Failed &&
+                    System.Windows.MessageBox.Show(Loc.I["opt_rp_fail_q"], Loc.I["opt_title"],
+                        System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Warning,
+                        System.Windows.MessageBoxResult.No) != System.Windows.MessageBoxResult.Yes)
+                {
+                    OptNote = Loc.I["opt_rp_fail_cancel"];
+                    return;
+                }
             }
 
             OptNote = Loc.I[apply ? "opt_applying" : "opt_reverting"];

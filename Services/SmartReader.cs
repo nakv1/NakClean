@@ -79,10 +79,31 @@ public static class SmartReader
         protected override bool ReleaseHandle() => CloseHandle(handle);
     }
 
+    // Диск, который завис на запросе (долго молчал и в итоге вернул ошибку), больше не дёргаем:
+    // каждый следующий запрос к нему висел бы столько же. Быстрые ошибки («не поддерживается»)
+    // и медленные успехи (раскрутка уснувшего HDD) сюда не попадают. Через 10 минут пробуем снова.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, DateTime> HungUntil = new();
+    private static readonly TimeSpan HangThreshold = TimeSpan.FromSeconds(5);
+
+    private static bool IsHung(int n) => HungUntil.TryGetValue(n, out var until) && DateTime.UtcNow < until;
+
     private static SafeFileHandleNative Open(int n, bool write = true) =>
-        CreateFile($@"\\.\PhysicalDrive{n}",
-            write ? GENERIC_READ | GENERIC_WRITE : 0, FILE_SHARE_READ | FILE_SHARE_WRITE,
-            IntPtr.Zero, OPEN_EXISTING, 0, IntPtr.Zero);
+        IsHung(n)
+            ? new SafeFileHandleNative() // пустой дескриптор = IsInvalid, вызывающий сразу вернёт null
+            : CreateFile($@"\\.\PhysicalDrive{n}",
+                write ? GENERIC_READ | GENERIC_WRITE : 0, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                IntPtr.Zero, OPEN_EXISTING, 0, IntPtr.Zero);
+
+    /// <summary>DeviceIoControl с замером: ошибка после долгого ожидания = диск завис.</summary>
+    private static bool Ioctl(int n, SafeFileHandleNative h, uint code,
+        byte[] inBuf, int inSize, byte[] outBuf, int outSize, out uint got)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        bool ok = DeviceIoControl(h, code, inBuf, inSize, outBuf, outSize, out got, IntPtr.Zero);
+        if (!ok && sw.Elapsed >= HangThreshold)
+            HungUntil[n] = DateTime.UtcNow.AddMinutes(10);
+        return ok;
+    }
 
     // ================= NVMe =================
 
@@ -112,7 +133,7 @@ public static class SmartReader
             BitConverter.GetBytes(protoData).CopyTo(buf, 24);           // ProtocolDataOffset (от начала proto-структуры)
             BitConverter.GetBytes(logSize).CopyTo(buf, 28);             // ProtocolDataLength
 
-            if (!DeviceIoControl(h, IOCTL_STORAGE_QUERY_PROPERTY, buf, total, buf, total, out _, IntPtr.Zero))
+            if (!Ioctl(physicalDriveNumber, h, IOCTL_STORAGE_QUERY_PROPERTY, buf, total, buf, total, out _))
                 return null;
 
             int s = queryHeader + protoData; // начало журнала (48)
@@ -255,7 +276,7 @@ public static class SmartReader
 
             // SENDCMDOUTPARAMS: cBufferSize(4) + DRIVERSTATUS(12) + bBuffer(512)
             var outBuf = new byte[16 + 512];
-            if (!DeviceIoControl(h, SMART_RCV_DRIVE_DATA, inBuf, inBuf.Length, outBuf, outBuf.Length, out _, IntPtr.Zero))
+            if (!Ioctl(n, h, SMART_RCV_DRIVE_DATA, inBuf, inBuf.Length, outBuf, outBuf.Length, out _))
                 return null;
 
             var block = new byte[512];
@@ -291,7 +312,7 @@ public static class SmartReader
             buf[44] = smart ? (byte)0xC2 : (byte)0;
             buf[45] = 0xA0; buf[46] = command;
 
-            if (!DeviceIoControl(h, IOCTL_ATA_PASS_THROUGH, buf, total, buf, total, out _, IntPtr.Zero))
+            if (!Ioctl(n, h, IOCTL_ATA_PASS_THROUGH, buf, total, buf, total, out _))
                 return null;
 
             var block = new byte[512];
@@ -407,7 +428,7 @@ public static class SmartReader
             var q = new byte[12];
             BitConverter.GetBytes(propertyId).CopyTo(q, 0);
             var outBuf = new byte[outSize];
-            return DeviceIoControl(h, IOCTL_STORAGE_QUERY_PROPERTY, q, q.Length, outBuf, outBuf.Length, out uint got, IntPtr.Zero)
+            return Ioctl(n, h, IOCTL_STORAGE_QUERY_PROPERTY, q, q.Length, outBuf, outBuf.Length, out uint got)
                    && got >= 8 ? outBuf : null;
         }
         catch { return null; }

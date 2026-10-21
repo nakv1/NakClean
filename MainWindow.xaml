@@ -1527,12 +1527,24 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
+                    <!-- Поиск по имени среди ВСЕХ найденных -->
+                    <Grid Grid.Row="1" Margin="6,0,6,10">
+                        <TextBox Style="{StaticResource DarkTextBox}" FontSize="14"
+                                 Text="{Binding RecoverySearch, UpdateSourceTrigger=PropertyChanged}"/>
+                        <TextBlock Text="{Binding [rec_search_ph], Source={x:Static loc:Loc.I}}" IsHitTestVisible="False"
+                                   Margin="12,0,10,0" VerticalAlignment="Center" FontSize="13"
+                                   Foreground="{DynamicResource MutedBrush}" TextTrimming="CharacterEllipsis"
+                                   Visibility="{Binding RecoverySearchEmpty, Converter={StaticResource BoolVis}}"/>
+                    </Grid>
+
                     <!-- Разделы-фильтры -->
-                    <ItemsControl Grid.Row="1" ItemsSource="{Binding RecoveryCategories}" Margin="6,0,6,8">
+                    <ItemsControl Grid.Row="2" ItemsSource="{Binding RecoveryCategories}" Margin="6,0,6,8">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
                         </ItemsControl.ItemsPanel>
@@ -1580,8 +1592,25 @@
                         </StackPanel>
                     </Grid>
 
+                    <!-- Заголовки колонок: клик - сортировка (по всем найденным, не только по видимым) -->
+                    <Grid Grid.Row="3" Margin="19,0,19,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="90"/>
+                            <ColumnDefinition Width="110"/>
+                        </Grid.ColumnDefinitions>
+                        <CheckBox Grid.Column="0" Visibility="Hidden"/>   <!-- держит ширину колонки галочек -->
+                        <Button Grid.Column="1" Margin="12,0" Content="{Binding RecNameHeader}" Style="{StaticResource ColumnHeader}"
+                                Command="{Binding SortRecoveryCommand}" CommandParameter="name"/>
+                        <Button Grid.Column="2" Margin="0,0,10,0" Content="{Binding RecSizeHeader}" Style="{StaticResource ColumnHeader}" HorizontalAlignment="Right"
+                                Command="{Binding SortRecoveryCommand}" CommandParameter="size"/>
+                        <Button Grid.Column="3" Content="{Binding RecChanceHeader}" Style="{StaticResource ColumnHeader}" HorizontalAlignment="Right"
+                                Command="{Binding SortRecoveryCommand}" CommandParameter="chance"/>
+                    </Grid>
+
                     <!-- Список удалённых -->
-                    <ListBox Grid.Row="2" ItemsSource="{Binding RecoveredView}" Margin="6,0" Background="Transparent"
+                    <ListBox Grid.Row="4" ItemsSource="{Binding RecoveredView}" Margin="6,0" Background="Transparent"
                              BorderThickness="0" HorizontalContentAlignment="Stretch"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto">
                         <ListBox.ItemContainerStyle>
@@ -1602,16 +1631,16 @@
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="90"/>
+                                            <ColumnDefinition Width="110"/>
                                         </Grid.ColumnDefinitions>
                                         <CheckBox Grid.Column="0" IsChecked="{Binding Selected}" VerticalAlignment="Center"/>
                                         <StackPanel Grid.Column="1" Margin="12,0" VerticalAlignment="Center">
                                             <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
-                                            <TextBlock Text="{Binding Path}" FontSize="11" Foreground="{DynamicResource MutedBrush}" TextTrimming="CharacterEllipsis" Margin="0,1,0,0"/>
+                                            <TextBlock Text="{Binding PathText}" FontSize="11" Foreground="{DynamicResource MutedBrush}" TextTrimming="CharacterEllipsis" Margin="0,1,0,0"/>
                                         </StackPanel>
-                                        <TextBlock Grid.Column="2" Text="{Binding SizeText}" FontSize="12" VerticalAlignment="Center" Margin="10,0"/>
-                                        <Border Grid.Column="3" CornerRadius="9" Padding="9,2" VerticalAlignment="Center"
+                                        <TextBlock Grid.Column="2" Text="{Binding SizeText}" FontSize="12" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,10,0"/>
+                                        <Border Grid.Column="3" CornerRadius="9" Padding="9,2" VerticalAlignment="Center" HorizontalAlignment="Right" ToolTip="{Binding ChanceTip}" Background="Transparent"
                                                 BorderBrush="{Binding ChanceBrush}" BorderThickness="1">
                                             <TextBlock Text="{Binding ChanceText}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding ChanceBrush}"/>
                                         </Border>
@@ -1622,7 +1651,7 @@
                     </ListBox>
 
                     <!-- Низ: предупреждение + кнопка -->
-                    <Border Grid.Row="3" Style="{StaticResource Card}" Margin="6,10,6,0" Padding="16,12">
+                    <Border Grid.Row="5" Style="{StaticResource Card}" Margin="6,10,6,0" Padding="16,12">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
@@ -1631,9 +1660,14 @@
                             <TextBlock Grid.Column="0" Text="{Binding [rec_hint], Source={x:Static loc:Loc.I}}"
                                        Foreground="{DynamicResource MutedBrush}" FontSize="12" VerticalAlignment="Center"
                                        TextWrapping="Wrap" Margin="0,0,12,0"/>
-                            <Button Grid.Column="1" Content="{Binding [rec_recover], Source={x:Static loc:Loc.I}}"
-                                    Style="{StaticResource AccentButton}" Padding="22,12"
-                                    Command="{Binding RecoverSelectedCommand}" IsEnabled="{Binding RecoveryIdle}"/>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                <Button Content="{Binding [cp_find], Source={x:Static loc:Loc.I}}" Style="{StaticResource GhostButton}"
+                                        Padding="18,12" Margin="0,0,8,0" Command="{Binding FindCopiesCommand}"
+                                        ToolTip="{Binding [cp_find_tip], Source={x:Static loc:Loc.I}}"/>
+                                <Button Content="{Binding [rec_recover], Source={x:Static loc:Loc.I}}"
+                                        Style="{StaticResource AccentButton}" Padding="22,12"
+                                        Command="{Binding RecoverSelectedCommand}" IsEnabled="{Binding RecoveryIdle}"/>
+                            </StackPanel>
                         </Grid>
                     </Border>
                 </Grid>

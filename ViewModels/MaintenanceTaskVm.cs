@@ -18,6 +18,8 @@ public sealed class MaintenanceTaskVm : ViewModelBase
     private readonly Func<Task<CheckResult>>? _customAnalyze;   // кастомный анализ (для дефрага - WMI-вердикт)
     private readonly Func<string, CheckResult>? _interpret;     // вывод проверки → вердикт «что нашлось»
     private readonly bool _unicode;                             // sfc пишет UTF-16
+    private readonly bool _servicing;                           // SFC/DISM - встают в очередь за незаконченными обновлениями
+    private bool _pendingAccepted;                              // уже предупредили и человек решил продолжить
 
     private CancellationTokenSource? _cts;
     private bool _isRun;
@@ -28,14 +30,14 @@ public sealed class MaintenanceTaskVm : ViewModelBase
         (string file, string args)? analyze, (string file, string args) run,
         string checkStageKey, string runStageKey, string doneKey,
         bool launchOnly = false, Func<Task<CheckResult>>? customAnalyze = null,
-        Func<string, CheckResult>? interpret = null, bool unicode = false)
+        Func<string, CheckResult>? interpret = null, bool unicode = false, bool servicing = false)
     {
         Glyph = glyph;
         _titleKey = titleKey; _descKey = descKey;
         _analyze = analyze; _run = run;
         _checkStageKey = checkStageKey; _runStageKey = runStageKey; _doneKey = doneKey;
         _launchOnly = launchOnly; _customAnalyze = customAnalyze;
-        _interpret = interpret; _unicode = unicode;
+        _interpret = interpret; _unicode = unicode; _servicing = servicing;
 
         PrimaryCommand = new RelayCommand(async () => await PrimaryAsync(), () => !IsWorking);
         ConfirmCommand = new RelayCommand(async () => await StartProcess(_run, _runStageKey, review: false), () => !IsWorking && _confirmEnabled);
@@ -178,6 +180,16 @@ public sealed class MaintenanceTaskVm : ViewModelBase
 
     private async Task StartProcess((string file, string args) step, string stageKey, bool review)
     {
+        // Windows не доставила обновления - инструмент может ждать очереди без движения. Предупреждаем один раз.
+        if (_servicing && !_pendingAccepted && MaintenanceService.IsServicingPending())
+        {
+            if (System.Windows.MessageBox.Show(Loc.I["mnt_pending_q"], "NakClean",
+                    System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Warning,
+                    System.Windows.MessageBoxResult.No) != System.Windows.MessageBoxResult.Yes)
+                return;
+            _pendingAccepted = true;
+        }
+
         IsWorking = true; ShowConfirm = false;
         _isRun = !review;   // идёт сама очистка, а не проверка
         IsIndeterminate = true; Progress = 0;
@@ -187,7 +199,19 @@ public sealed class MaintenanceTaskVm : ViewModelBase
         _cts = new CancellationTokenSource();
         var prog = new Progress<MaintProgress>(mp =>
         {
-            if (mp.Percent is double d) { IsIndeterminate = false; Progress = d * 100; }
+            if (mp.Percent is not double d) return;
+            if (d >= 0.999)
+            {
+                // Windows рано показывает 100% и потом ещё долго доделывает - не держим застывшую полоску
+                IsIndeterminate = true;
+                Status = Loc.I["mnt_finishing"];
+            }
+            else
+            {
+                IsIndeterminate = false;
+                Progress = d * 100;
+                Status = Loc.I[stageKey];
+            }
         });
 
         var (ok, text) = await MaintenanceService.RunAsync(step, prog, _cts.Token, _unicode);

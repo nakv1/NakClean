@@ -16,7 +16,13 @@ public sealed class DeletedFile
     public bool Resident { get; init; }
     public byte[]? ResidentData { get; init; }
     public List<(long lcn, long count)> Runs { get; init; } = new();
-    public int Chance { get; init; }   // 0 = низкий, 1 = средний, 2 = высокий
+    public int Chance { get; init; }   // 0 = низкий, 1 = средний, 2 = высокий, отрицательные - см. константы ниже
+    /// <summary>Файл был удалён через корзину: когда его туда отправили (из её файла $I). Имя и путь - исходные.</summary>
+    public DateTime? RecycledAt { get; init; }
+
+    public const int ChanceWiped = -1;        // место забито нулями (SSD TRIM)
+    public const int ChanceOverwritten = -2;  // начало не похоже на свой формат - место занято чужими данными
+    public const int ChanceService = -3;      // служебный файл Office «~$...», не сам документ
 }
 
 /// <summary>
@@ -222,14 +228,37 @@ public static partial class NtfsMftReader
 
         var bitmap = rec6 != null ? LoadBitmap(h, rec6, (int)recSize, bytesPerCluster) : null;
 
+        // Корзина переименовывает файл в «$R<код>.ext», а исходное имя, путь и дату кладёт рядом в «$I<код>.ext».
+        // После очистки корзины удалены оба - сопоставляем их по папке и коду, чтобы показать настоящее имя.
+        var recycled = new Dictionary<(long parent, string code), (string path, DateTime? when)>();
+        foreach (var (_, raw) in found)
+            if (raw.name.Length > 2 && raw.name.StartsWith("$I", StringComparison.Ordinal) && ParseRecycleInfo(raw.resident) is { } ri)
+                recycled[(raw.parent, raw.name[2..].ToUpperInvariant())] = ri;
+
+        var recycledData = new HashSet<(long, string)>(found
+            .Where(f => f.raw.name.Length > 2 && f.raw.name.StartsWith("$R", StringComparison.Ordinal))
+            .Select(f => (f.raw.parent, f.raw.name[2..].ToUpperInvariant())));
+
         foreach (var (idx, raw) in found)
         {
             ct.ThrowIfCancellationRequested();
+            // служебный $I, чей файл найден, - только мешал бы в списке (его данные уже в имени и дате файла)
+            if (raw.name.Length > 2 && raw.name.StartsWith("$I", StringComparison.Ordinal)
+                && recycledData.Contains((raw.parent, raw.name[2..].ToUpperInvariant())))
+                continue;
             string folder = PathOf(raw.parent, 0) ?? "?";
+            string name = raw.name, path = folder + "\\" + raw.name;
+            DateTime? recycledAt = null;
+            if (raw.name.Length > 2 && raw.name.StartsWith("$R", StringComparison.Ordinal)
+                && recycled.TryGetValue((raw.parent, raw.name[2..].ToUpperInvariant()), out var orig))
+            {
+                string origName = SafeFileName(orig.path);
+                if (origName.Length > 0) { name = origName; path = orig.path; recycledAt = orig.when; }
+            }
             result.Add(new DeletedFile
             {
-                Name = raw.name,
-                Path = folder + "\\" + raw.name,
+                Name = name,
+                Path = path,
                 Size = raw.size,
                 Drive = drive,
                 BytesPerCluster = bytesPerCluster,
@@ -237,6 +266,7 @@ public static partial class NtfsMftReader
                 ResidentData = raw.resident,
                 Runs = raw.runs,
                 Chance = ChanceChecked(h, raw, bitmap, bytesPerCluster),
+                RecycledAt = recycledAt,
             });
         }
         return result;
@@ -247,40 +277,64 @@ public static partial class NtfsMftReader
     {
         try
         {
-            if (f.Resident)
-            {
-                File.WriteAllBytes(destPath, f.ResidentData ?? Array.Empty<byte>());
-                return true;
-            }
-
-            using var h = CreateFile($@"\\.\{f.Drive}:", GENERIC_READ, FILE_SHARE_RW, IntPtr.Zero, OPEN_EXISTING, 0, IntPtr.Zero);
-            if (h.IsInvalid) return false;
-
             using var outFs = new FileStream(destPath, FileMode.Create, FileAccess.Write);
-            long remaining = f.Size;
-            long bpc = f.BytesPerCluster;
-            int chunkClusters = (int)Math.Max(1, 4 * 1024 * 1024 / bpc);
-
-            foreach (var (lcn, count) in f.Runs)
-            {
-                long left = count;
-                long pos = lcn * bpc;
-                while (left > 0 && remaining > 0)
-                {
-                    int n = (int)Math.Min(chunkClusters, left);
-                    var buf = ReadAt(h, pos, (int)(n * bpc));   // кластеры выровнены - чтение тома валидно
-                    if (buf.Length == 0) break;
-                    int write = (int)Math.Min(buf.Length, remaining);
-                    outFs.Write(buf, 0, write);
-                    remaining -= write;
-                    pos += buf.Length;
-                    left -= n;
-                }
-                if (remaining <= 0) break;
-            }
-            return true;
+            return CopyContent(f, outFs);
         }
         catch { return false; }
+    }
+
+    /// <summary>
+    /// Содержимое удалённого файла целиком в память (для восстановления на ТОТ ЖЕ диск: сначала читаем
+    /// все отмеченные, потом пишем - иначе запись может лечь поверх ещё не прочитанных). null - не удалось
+    /// или файл больше 2 ГБ (столько не помещается в один массив).
+    /// </summary>
+    public static byte[]? ReadContent(DeletedFile f)
+    {
+        if (f.Size > int.MaxValue) return null;
+        try
+        {
+            using var ms = new MemoryStream((int)Math.Max(0, f.Size));
+            if (!CopyContent(f, ms)) return null;
+            // прочитан целиком - отдаём сам буфер, без второй копии в памяти
+            return ms.Length == ms.Capacity ? ms.GetBuffer() : ms.ToArray();
+        }
+        catch { return null; }
+    }
+
+    private static bool CopyContent(DeletedFile f, Stream outFs)
+    {
+        if (f.Resident)
+        {
+            var data = f.ResidentData ?? Array.Empty<byte>();
+            outFs.Write(data, 0, data.Length);
+            return true;
+        }
+
+        using var h = CreateFile($@"\\.\{f.Drive}:", GENERIC_READ, FILE_SHARE_RW, IntPtr.Zero, OPEN_EXISTING, 0, IntPtr.Zero);
+        if (h.IsInvalid) return false;
+
+        long remaining = f.Size;
+        long bpc = f.BytesPerCluster;
+        int chunkClusters = (int)Math.Max(1, 4 * 1024 * 1024 / bpc);
+
+        foreach (var (lcn, count) in f.Runs)
+        {
+            long left = count;
+            long pos = lcn * bpc;
+            while (left > 0 && remaining > 0)
+            {
+                int n = (int)Math.Min(chunkClusters, left);
+                var buf = ReadAt(h, pos, (int)(n * bpc));   // кластеры выровнены - чтение тома валидно
+                if (buf.Length == 0) break;
+                int write = (int)Math.Min(buf.Length, remaining);
+                outFs.Write(buf, 0, write);
+                remaining -= write;
+                pos += buf.Length;
+                left -= n;
+            }
+            if (remaining <= 0) break;
+        }
+        return true;
     }
 
     private static (string? name, long parent, long size, bool isDir, bool inUse, bool nonResident, byte[]? resident)
@@ -548,21 +602,56 @@ public static partial class NtfsMftReader
         return 0;
     }
 
-    // Шанс с проверкой реального содержимого: если данные уже обнулены (SSD TRIM) -> -1 «стёрт».
+    // Шанс с проверкой реального содержимого. «Место свободно» ещё не значит «никто не трогал»:
+    // его мог занять и снова освободить другой файл. Поэтому смотрим на само начало файла:
+    // нули (SSD TRIM) -> «стёрт»; у известного формата чужое начало -> «перезаписан».
     private static int ChanceChecked(SafeFileHandle h, DeletedRaw raw, byte[]? bitmap, uint bytesPerCluster)
     {
+        if (FileSignatures.IsOfficeLock(raw.name, raw.size)) return DeletedFile.ChanceService;
         int c = Chance(raw, bitmap, bytesPerCluster);
-        if (c > 0 && raw.nonResident && raw.runs.Count > 0 && FirstClusterZero(h, raw.runs, bytesPerCluster))
-            return -1;   // место «свободно», но физически забито нулями - файла уже нет
+        if (c <= 0) return c;
+
+        byte[]? head = raw.nonResident
+            ? (raw.runs.Count > 0 ? ReadAt(h, raw.runs[0].lcn * bytesPerCluster, (int)bytesPerCluster) : null)
+            : raw.resident;
+        if (head is null || head.Length == 0) return c;
+        if (raw.nonResident && Array.TrueForAll(head, b => b == 0)) return DeletedFile.ChanceWiped;
+        if (FileSignatures.Mismatch(raw.name, head)) return DeletedFile.ChanceOverwritten;
         return c;
     }
 
-    private static bool FirstClusterZero(SafeFileHandle h, List<(long lcn, long count)> runs, uint bpc)
+    /// <summary>Разбор файла корзины $I: версия 1 (Windows Vista-8.1) или 2 (Windows 10/11).</summary>
+    private static (string path, DateTime? when)? ParseRecycleInfo(byte[]? b)
     {
-        var buf = ReadAt(h, runs[0].lcn * bpc, (int)bpc);
-        if (buf.Length == 0) return false;
-        foreach (var b in buf) if (b != 0) return false;
-        return true;
+        if (b is null || b.Length < 26) return null;
+        try
+        {
+            long ver = BitConverter.ToInt64(b, 0);
+            string path;
+            if (ver == 2 && b.Length >= 28)
+            {
+                int chars = BitConverter.ToInt32(b, 24);   // вместе с завершающим нулём
+                if (chars <= 1 || 28 + chars * 2 > b.Length) return null;
+                path = Encoding.Unicode.GetString(b, 28, chars * 2);
+            }
+            else if (ver == 1) path = Encoding.Unicode.GetString(b, 24, Math.Min(520, (b.Length - 24) / 2 * 2));
+            else return null;
+
+            int zero = path.IndexOf('\0');
+            if (zero >= 0) path = path[..zero];
+            if (path.Length < 3) return null;
+
+            long ft = BitConverter.ToInt64(b, 16);
+            DateTime? when = ft > 0 ? DateTime.FromFileTime(ft) : null;
+            return (path, when);
+        }
+        catch { return null; }
+    }
+
+    private static string SafeFileName(string path)
+    {
+        try { return System.IO.Path.GetFileName(path) ?? ""; }
+        catch { return ""; }
     }
 
     private static int Chance(DeletedRaw raw, byte[]? bitmap, uint bytesPerCluster)

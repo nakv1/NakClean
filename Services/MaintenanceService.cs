@@ -38,6 +38,26 @@ public static class MaintenanceService
 
     private static readonly Regex PercentRx = new(@"(\d{1,3}(?:[.,]\d+)?)\s*%", RegexOptions.Compiled);
 
+    /// <summary>
+    /// Windows не закончила обслуживание: ждёт перезагрузки после обновлений или ставит их прямо сейчас.
+    /// В таком состоянии SFC/DISM встают в очередь и могут ждать без движения до перезагрузки.
+    /// Отметка иногда остаётся и после перезагрузки - поэтому только предупреждаем, не запрещаем.
+    /// </summary>
+    public static bool IsServicingPending()
+    {
+        try
+        {
+            using var hklm = Microsoft.Win32.RegistryKey.OpenBaseKey(Microsoft.Win32.RegistryHive.LocalMachine, Microsoft.Win32.RegistryView.Registry64);
+            const string cbs = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing";
+            using (var k = hklm.OpenSubKey(cbs + @"\RebootPending")) if (k != null) return true;
+            using (var k = hklm.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired")) if (k != null) return true;
+            using (var k = hklm.OpenSubKey(cbs + @"\SessionsPending"))
+                if (k?.GetValue("Exclusive") is int ex && ex != 0) return true;
+        }
+        catch { }
+        return false;
+    }
+
     public static bool LaunchMemoryTest()
     {
         try { Process.Start(new ProcessStartInfo("mdsched.exe") { UseShellExecute = true }); return true; }
