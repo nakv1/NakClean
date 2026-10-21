@@ -1,4 +1,7 @@
+using System.Text;
+using System.Text.RegularExpressions;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using NakClean.Services;
 
 namespace NakClean.ViewModels;
@@ -6,7 +9,132 @@ namespace NakClean.ViewModels;
 public sealed class RecoveryFileVm : ViewModelBase
 {
     public DeletedFile File { get; }
-    public RecoveryFileVm(DeletedFile f) { File = f; }
+    public RecoveryFileVm(DeletedFile f)
+    {
+        File = f;
+        PreviewCommand = new RelayCommand(async () => await TogglePreviewAsync());
+    }
+
+    // ---------- предпросмотр: что внутри, без восстановления ----------
+    public RelayCommand PreviewCommand { get; }
+    private const long PreviewMax = 30L * 1024 * 1024;
+    private bool _previewLoaded;
+
+    private bool _previewOpen;
+    public bool PreviewOpen { get => _previewOpen; private set => Set(ref _previewOpen, value); }
+
+    private ImageSource? _previewImage;
+    public ImageSource? PreviewImage
+    {
+        get => _previewImage;
+        private set { if (Set(ref _previewImage, value)) OnPropertyChanged(nameof(HasPreviewImage)); }
+    }
+    public bool HasPreviewImage => _previewImage != null;
+
+    private string _previewText = "";
+    public string PreviewText
+    {
+        get => _previewText;
+        private set { if (Set(ref _previewText, value)) OnPropertyChanged(nameof(HasPreviewText)); }
+    }
+    public bool HasPreviewText => _previewText.Length > 0;
+
+    private async Task TogglePreviewAsync()
+    {
+        if (PreviewOpen) { PreviewOpen = false; return; }
+        PreviewOpen = true;
+        if (_previewLoaded) return;
+        PreviewText = Loc.I["pv_loading"];
+        var (img, text) = await Task.Run(() => BuildPreview(File));
+        PreviewImage = img;
+        PreviewText = text ?? "";
+        _previewLoaded = true;
+    }
+
+    private static readonly HashSet<string> ImageExts = new(StringComparer.OrdinalIgnoreCase)
+        { "jpg", "jpeg", "jfif", "png", "gif", "bmp", "tif", "tiff", "ico", "webp", "heic" };
+    private static readonly HashSet<string> TextExts = new(StringComparer.OrdinalIgnoreCase)
+        { "txt", "csv", "md", "log", "json", "xml", "html", "htm", "ini", "cfg", "conf", "yml", "yaml",
+          "cs", "py", "js", "ts", "css", "sql", "bat", "cmd", "ps1", "reg", "c", "cpp", "h", "java" };
+
+    /// <summary>Картинка (уменьшенная) или до ~600 символов текста. Всё в фоне, только чтение с диска.</summary>
+    private static (ImageSource? img, string? text) BuildPreview(DeletedFile f)
+    {
+        if (f.Size > PreviewMax) return (null, string.Format(Loc.I["pv_big"], Format.Bytes(PreviewMax)));
+        var bytes = NtfsMftReader.ReadContent(f);
+        if (bytes is null) return (null, Loc.I["pv_fail"]);
+        if (Array.TrueForAll(bytes, b => b == 0)) return (null, Loc.I["pv_zeros"]);
+
+        // «замок» Word: первый байт - длина имени, дальше само имя того, кто открыл документ
+        if (FileSignatures.IsOfficeLock(f.Name, f.Size))
+        {
+            int len = bytes.Length > 1 ? Math.Min(bytes[0], bytes.Length - 1) : 0;
+            return (null, string.Format(Loc.I["pv_lock"], Encoding.ASCII.GetString(bytes, 1, len)));
+        }
+
+        string ext = System.IO.Path.GetExtension(f.Name).TrimStart('.');
+        string kind = FileSignatures.Detect(bytes[..Math.Min(bytes.Length, 4096)]) ?? Loc.I["pv_unknown"];
+
+        if (ImageExts.Contains(ext) || kind is "JPEG" or "PNG" or "GIF" or "BMP" or "WebP" or "TIFF")
+        {
+            try
+            {
+                var bi = new BitmapImage();
+                bi.BeginInit();
+                bi.CacheOption = BitmapCacheOption.OnLoad;
+                bi.StreamSource = new System.IO.MemoryStream(bytes);
+                bi.DecodePixelHeight = 220;   // для предпросмотра хватит, память не тратим
+                bi.EndInit();
+                bi.Freeze();
+                return (bi, null);
+            }
+            catch { return (null, string.Format(Loc.I["pv_bad_image"], kind)); }
+        }
+
+        if (ext.Equals("docx", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                using var zip = new System.IO.Compression.ZipArchive(new System.IO.MemoryStream(bytes));
+                var entry = zip.GetEntry("word/document.xml");
+                if (entry != null)
+                {
+                    using var r = new System.IO.StreamReader(entry.Open(), Encoding.UTF8);
+                    string xml = r.ReadToEnd().Replace("</w:p>", "\n");
+                    string plain = System.Net.WebUtility.HtmlDecode(Regex.Replace(xml, "<[^>]+>", ""));
+                    plain = Regex.Replace(plain, @"\n\s*\n+", "\n").Trim();
+                    return (null, plain.Length == 0 ? Loc.I["pv_docx_empty"] : Cut(plain));
+                }
+            }
+            catch { }
+            return (null, string.Format(Loc.I["pv_none"], kind));
+        }
+
+        if (TextExts.Contains(ext)) return (null, Cut(DecodeText(bytes)));
+        return (null, string.Format(Loc.I["pv_none"], kind));
+    }
+
+    private static string Cut(string s) => s.Length <= 600 ? s : s[..600] + " …";
+
+    // кодировка: метка UTF-16/UTF-8, иначе пробуем строгий UTF-8, не вышло - кириллица Windows (1251)
+    private static string DecodeText(byte[] b)
+    {
+        if (b.Length >= 2 && b[0] == 0xFF && b[1] == 0xFE) return Encoding.Unicode.GetString(b, 2, Math.Min(b.Length - 2, 4096));
+        int n = Math.Min(b.Length, 4096);
+        var strict = new UTF8Encoding(false, true);
+        // обрезка на 4 КБ может разрезать русскую букву (2 байта) - пробуем отступить на 1-3 байта
+        for (int cut = 0; cut <= 3 && n - cut > 0; cut++)
+        {
+            try { return strict.GetString(b, 0, n - cut).TrimStart('﻿'); }
+            catch { if (n == b.Length) break; }   // файл целиком и всё равно не UTF-8 - дальше не пробуем
+        }
+        try
+        {
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+            return Encoding.GetEncoding(1251).GetString(b, 0, n);
+        }
+        catch { return Encoding.Latin1.GetString(b, 0, n); }
+    }
 
     private bool _selected;
     public bool Selected { get => _selected; set => Set(ref _selected, value); }

@@ -1597,15 +1597,16 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="44"/>
                             <ColumnDefinition Width="90"/>
                             <ColumnDefinition Width="110"/>
                         </Grid.ColumnDefinitions>
                         <CheckBox Grid.Column="0" Visibility="Hidden"/>   <!-- держит ширину колонки галочек -->
                         <Button Grid.Column="1" Margin="12,0" Content="{Binding RecNameHeader}" Style="{StaticResource ColumnHeader}"
                                 Command="{Binding SortRecoveryCommand}" CommandParameter="name"/>
-                        <Button Grid.Column="2" Margin="0,0,10,0" Content="{Binding RecSizeHeader}" Style="{StaticResource ColumnHeader}" HorizontalAlignment="Right"
+                        <Button Grid.Column="3" Margin="0,0,10,0" Content="{Binding RecSizeHeader}" Style="{StaticResource ColumnHeader}" HorizontalAlignment="Right"
                                 Command="{Binding SortRecoveryCommand}" CommandParameter="size"/>
-                        <Button Grid.Column="3" Content="{Binding RecChanceHeader}" Style="{StaticResource ColumnHeader}" HorizontalAlignment="Right"
+                        <Button Grid.Column="4" Content="{Binding RecChanceHeader}" Style="{StaticResource ColumnHeader}" HorizontalAlignment="Right"
                                 Command="{Binding SortRecoveryCommand}" CommandParameter="chance"/>
                     </Grid>
 
@@ -1631,19 +1632,36 @@
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="44"/>
                                             <ColumnDefinition Width="90"/>
                                             <ColumnDefinition Width="110"/>
                                         </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
                                         <CheckBox Grid.Column="0" IsChecked="{Binding Selected}" VerticalAlignment="Center"/>
                                         <StackPanel Grid.Column="1" Margin="12,0" VerticalAlignment="Center">
                                             <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
                                             <TextBlock Text="{Binding PathText}" FontSize="11" Foreground="{DynamicResource MutedBrush}" TextTrimming="CharacterEllipsis" Margin="0,1,0,0"/>
                                         </StackPanel>
-                                        <TextBlock Grid.Column="2" Text="{Binding SizeText}" FontSize="12" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,10,0"/>
-                                        <Border Grid.Column="3" CornerRadius="9" Padding="9,2" VerticalAlignment="Center" HorizontalAlignment="Right" ToolTip="{Binding ChanceTip}" Background="Transparent"
+                                        <Button Grid.Column="2" Content="👁" Style="{StaticResource GhostButton}" Padding="8,3" FontSize="12"
+                                                VerticalAlignment="Center" HorizontalAlignment="Center" Command="{Binding PreviewCommand}"
+                                                ToolTip="{Binding [pv_tip], Source={x:Static loc:Loc.I}}"/>
+                                        <TextBlock Grid.Column="3" Text="{Binding SizeText}" FontSize="12" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,10,0"/>
+                                        <Border Grid.Column="4" CornerRadius="9" Padding="9,2" VerticalAlignment="Center" HorizontalAlignment="Right" ToolTip="{Binding ChanceTip}" Background="Transparent"
                                                 BorderBrush="{Binding ChanceBrush}" BorderThickness="1">
                                             <TextBlock Text="{Binding ChanceText}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding ChanceBrush}"/>
                                         </Border>
+                                        <!-- предпросмотр: картинка или начало текста -->
+                                        <StackPanel Grid.Row="1" Grid.ColumnSpan="5" Margin="34,10,0,2"
+                                                    Visibility="{Binding PreviewOpen, Converter={StaticResource BoolVis}}">
+                                            <Image Source="{Binding PreviewImage}" MaxHeight="220" HorizontalAlignment="Left" Stretch="Uniform"
+                                                   Visibility="{Binding HasPreviewImage, Converter={StaticResource BoolVis}}"/>
+                                            <TextBlock Text="{Binding PreviewText}" FontSize="12" Foreground="{DynamicResource MutedBrush}"
+                                                       TextWrapping="Wrap" MaxHeight="150" TextTrimming="CharacterEllipsis"
+                                                       Visibility="{Binding HasPreviewText, Converter={StaticResource BoolVis}}"/>
+                                        </StackPanel>
                                     </Grid>
                                 </Border>
                             </DataTemplate>

@@ -1,3 +1,5 @@
+using System.IO;
+
 namespace NakClean.Services;
 
 /// <summary>
@@ -60,6 +62,24 @@ public static class FileSignatures
 
     private static readonly Func<byte[], bool>[] AllChecks = Checks.Values.Distinct().ToArray();
 
+    // для предпросмотра: «по началу файла это ...». Порядок важен: WebP раньше общего RIFF, короткие подписи - в конце
+    private static readonly (string Name, string Ext)[] Named =
+    [
+        ("JPEG", "jpg"), ("PNG", "png"), ("GIF", "gif"), ("WebP", "webp"), ("PDF", "pdf"),
+        ("ZIP / DOCX / XLSX", "zip"), ("DOC / XLS (Office 97-2003)", "doc"), ("RAR", "rar"), ("7-Zip", "7z"),
+        ("MP4 / MOV", "mp4"), ("MKV / WebM", "mkv"), ("FLAC", "flac"), ("OGG", "ogg"), ("RTF", "rtf"),
+        ("TIFF", "tif"), ("PSD", "psd"), ("AVI / WAV", "avi"), ("EXE / DLL", "exe"), ("GZip", "gz"),
+        ("MP3", "mp3"), ("BMP", "bmp"),
+    ];
+
+    /// <summary>Какой формат по первым байтам; null - ни на что известное не похоже.</summary>
+    public static string? Detect(byte[] head)
+    {
+        foreach (var (name, ext) in Named)
+            if (Checks.TryGetValue(ext, out var ok) && ok(head)) return name;
+        return null;
+    }
+
     /// <summary>
     /// true - формат известен, а начало файла не похоже ни на него, ни на какой-либо другой известный формат
     /// (данные чужие). Файл с «не тем» расширением (.png, внутри которого JPEG; .doc, внутри которого DOCX)
@@ -72,6 +92,24 @@ public static class FileSignatures
         if (!Checks.TryGetValue(fileName[(dot + 1)..], out var ok) || ok(head)) return false;
         foreach (var other in AllChecks) if (other(head)) return false;
         return true;
+    }
+
+    /// <summary>
+    /// Восстановленный файл похож на испорченный: начало - одни нули или не похоже на свой формат.
+    /// Для форматов без подписи (.txt и т.п.) судим только по нулям.
+    /// </summary>
+    public static bool LooksBroken(string path, string fileName)
+    {
+        try
+        {
+            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            var head = new byte[4096];
+            int n = fs.Read(head, 0, head.Length);
+            if (n == 0) return false;
+            Array.Resize(ref head, n);
+            return Array.TrueForAll(head, b => b == 0) || Mismatch(fileName, head);
+        }
+        catch { return false; }
     }
 
     /// <summary>Служебный файл Word/Excel «~$имя.docx» (~160 байт: только имя того, кто открыл документ).</summary>

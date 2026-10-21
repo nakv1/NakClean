@@ -1027,7 +1027,9 @@ public sealed partial class MainViewModel : ViewModelBase
 
         RecoveryBusy = true;
         RecoveryNote = Loc.I["rec_recovering"];
-        int ok = 0, fail = 0;
+        int ok = 0, fail = 0, broken = 0;
+        // записали - сразу смотрим, похоже ли на свой формат: «готово» не должно означать «всё целое»
+        void Written(string target, string name) { ok++; if (FileSignatures.LooksBroken(target, name)) broken++; }
         await Task.Run(() =>
         {
             if (!sameDrive)
@@ -1035,7 +1037,7 @@ public sealed partial class MainViewModel : ViewModelBase
                 foreach (var r in sel)
                 {
                     string target = UniquePath(dest, r.File.Name);
-                    if (NtfsMftReader.Recover(r.File, target)) ok++; else fail++;
+                    if (NtfsMftReader.Recover(r.File, target)) Written(target, r.File.Name); else fail++;
                 }
                 return;
             }
@@ -1045,14 +1047,17 @@ public sealed partial class MainViewModel : ViewModelBase
             foreach (var (r, bytes) in data)
             {
                 if (bytes is null) { fail++; continue; }
-                try { System.IO.File.WriteAllBytes(UniquePath(dest, r.File.Name), bytes); ok++; }
+                string target = UniquePath(dest, r.File.Name);
+                try { System.IO.File.WriteAllBytes(target, bytes); Written(target, r.File.Name); }
                 catch { fail++; }
             }
         });
         RecoveryBusy = false;
         if (sameDrive) ReleaseMemory();   // прочитанное в память больше не нужно
-        RecoveryNote = string.Format(Loc.I["rec_done"], ok, fail);
-        ToastService.Ok(string.Format(Loc.I["rec_done"], ok, fail));
+        RecoveryNote = string.Format(Loc.I["rec_done"], ok, fail)
+                       + (broken > 0 ? string.Format(Loc.I["rec_done_broken"], broken) : "");
+        if (broken > 0) ToastService.Warn(RecoveryNote);
+        else ToastService.Ok(RecoveryNote);
     }
 
     /// <summary>
