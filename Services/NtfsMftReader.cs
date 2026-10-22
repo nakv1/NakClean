@@ -9,7 +9,12 @@ namespace NakClean.Services;
 public sealed class DeletedFile
 {
     public required string Name { get; init; }
-    public required string Path { get; init; }
+    /// <summary>
+    /// Папка. Одна и та же строка на все файлы папки (из общего кэша путей): у 426 тыс. удалённых всего ~28 тыс.
+    /// папок - хранить полный путь у каждого стоило ~150 МБ. Полный путь склеиваем, когда он нужен.
+    /// </summary>
+    public required string Folder { get; init; }
+    public string Path => Folder + "\\" + Name;
     public long Size { get; init; }
     public char Drive { get; init; }
     public uint BytesPerCluster { get; init; }
@@ -246,19 +251,25 @@ public static partial class NtfsMftReader
             if (raw.name.Length > 2 && raw.name.StartsWith("$I", StringComparison.Ordinal)
                 && recycledData.Contains((raw.parent, raw.name[2..].ToUpperInvariant())))
                 continue;
-            string folder = PathOf(raw.parent, 0) ?? "?";
-            string name = raw.name, path = folder + "\\" + raw.name;
+            string folder = PathOf(raw.parent, 0) ?? "?";   // общая строка из кэша - одна на папку
+            string name = raw.name;
             DateTime? recycledAt = null;
             if (raw.name.Length > 2 && raw.name.StartsWith("$R", StringComparison.Ordinal)
                 && recycled.TryGetValue((raw.parent, raw.name[2..].ToUpperInvariant()), out var orig))
             {
                 string origName = SafeFileName(orig.path);
-                if (origName.Length > 0) { name = origName; path = orig.path; recycledAt = orig.when; }
+                if (origName.Length > 0)
+                {
+                    name = origName;
+                    folder = System.IO.Path.GetDirectoryName(orig.path) ?? folder;
+                    recycledAt = orig.when;
+                }
             }
+            raw.runs.TrimExcess();   // место под куски было заготовлено с запасом (1,5 млн при 0,4 млн нужных)
             result.Add(new DeletedFile
             {
                 Name = name,
-                Path = path,
+                Folder = folder,
                 Size = raw.size,
                 Drive = drive,
                 BytesPerCluster = bytesPerCluster,

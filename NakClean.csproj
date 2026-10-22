@@ -18,10 +18,11 @@
     <NeutralLanguage>en</NeutralLanguage>
     <Copyright>© 2026 nak (github.com/nakv1). Все права защищены. All rights reserved.</Copyright>
     <Description>NakClean - честный чистильщик и оптимизатор Windows. Автор: nak (github.com/nakv1).</Description>
-    <!-- Экономный сборщик мусора: рабочий (не серверный) режим использует меньше памяти,
-         неконкурентный режим возвращает память ОС агрессивнее (после скана делаем GC.Collect). -->
+    <!-- Сборщик мусора: рабочий (не серверный) режим - меньше памяти. Фоновая уборка (concurrent) ВКЛЮЧЕНА:
+         замер 2026-10-21 - при тех же данных (394 МБ) без неё процесс держал 570-640 МБ, с ней 410-445 МБ;
+         плюс окно не замирает на время уборки большого оглавления дисков. -->
     <ServerGarbageCollection>false</ServerGarbageCollection>
-    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
   </PropertyGroup>
 
   <ItemGroup>

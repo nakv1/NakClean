@@ -109,6 +109,18 @@ public static class FileScanService
         flat.Sort((a, b) => b.Size.CompareTo(a.Size));
         if (flat.Count > MaxFlatFiles) flat.RemoveRange(MaxFlatFiles, flat.Count - MaxFlatFiles);
 
+        // списки росли «с запасом» (место под миллион строк при 50 тыс. оставленных, у папок - под файлы
+        // и подпапки): замер на C: - 174 МБ данных, без запаса 138 МБ. Работа дерева от этого не меняется.
+        flat.TrimExcess();
+        var stack = new Stack<TreeNode>();
+        stack.Push(rootNode);
+        while (stack.Count > 0)
+        {
+            var n = stack.Pop();
+            n.Files?.TrimExcess();
+            if (n.Sub is { } sub) { sub.TrimExcess(); foreach (var c in sub.Values) stack.Push(c); }
+        }
+
         // типы файлов: имена из системы + сортировка по размеру
         var exts = extMap.Values.OrderByDescending(e => e.Size).ToList();
         foreach (var e in exts)

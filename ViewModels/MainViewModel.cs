@@ -907,11 +907,16 @@ public sealed partial class MainViewModel : ViewModelBase
             if (cts.IsCancellationRequested) return;
 
             Recovered.Clear();
+            var shown = new HashSet<DeletedFile>(ReferenceEqualityComparer.Instance);
             foreach (var f in rows)
             {
                 if (!_recVms.TryGetValue(f, out var vm)) _recVms[f] = vm = new RecoveryFileVm(f);
                 Recovered.Add(vm);
+                shown.Add(f);
             }
+            // карточки не копим: держим только показанные и отмеченные (галочка не должна потеряться)
+            foreach (var key in _recVms.Where(kv => !kv.Value.Selected && !shown.Contains(kv.Key)).Select(kv => kv.Key).ToList())
+                _recVms.Remove(key);
             RebuildCategories();
 
             if (all.Count == 0) { RecoveryNote = Loc.I["rec_empty"]; return; }
@@ -2374,9 +2379,13 @@ public sealed partial class MainViewModel : ViewModelBase
     /// </summary>
     public static void ReleaseMemory()
     {
+        // «Агрессивная» уборка: .NET отдаёт Windows ВСЮ свободную память, а не держит её про запас.
+        // Замер 2026-10-21: обычная уборка оставляла процессу в 1,5-2 раза больше, чем весят данные
+        // (оглавление 148 МБ данных → 300 МБ у процесса), агрессивная - почти ровно столько, сколько данные.
+        // Зовём только после тяжёлых операций, поэтому её небольшая цена не важна.
         System.Runtime.GCSettings.LargeObjectHeapCompactionMode =
             System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
-        GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
+        GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
     }
 
     // разворот/сворачивание строки в плоском дереве (как в WizTree)
