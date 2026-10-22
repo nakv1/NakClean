@@ -432,8 +432,9 @@ public static class OptimizationService
             var psi = new ProcessStartInfo
             {
                 FileName = file, Arguments = args,
+                // вывод не перехватываем: мы его не читаем, а непрочитанный поток при большом выводе
+                // останавливает команду до конца ожидания (у точки восстановления - до 10 минут)
                 UseShellExecute = false, CreateNoWindow = true,
-                RedirectStandardOutput = true, RedirectStandardError = true,
             };
             using var p = Process.Start(psi);
             if (p is null) return false;

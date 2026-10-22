@@ -149,9 +149,7 @@ public static class ServicesService
                 FileName = "sc.exe",
                 Arguments = args,
                 UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
+                CreateNoWindow = true,   // вывод не перехватываем - не читаем его (иначе при большом выводе sc встанет)
             };
             using var p = Process.Start(psi);
             if (p is null) return false;

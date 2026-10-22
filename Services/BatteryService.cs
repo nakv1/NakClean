@@ -21,8 +21,7 @@ public static class BatteryService
         {
             var psi = new ProcessStartInfo("powercfg.exe", $"/batteryreport /output \"{tmp}\"")
             {
-                UseShellExecute = false, CreateNoWindow = true,
-                RedirectStandardOutput = true, RedirectStandardError = true,
+                UseShellExecute = false, CreateNoWindow = true,   // вывод не перехватываем - не читаем его (иначе может встать)
             };
             using (var p = Process.Start(psi)) p?.WaitForExit(15000);
 
