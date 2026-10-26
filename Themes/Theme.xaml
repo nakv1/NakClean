@@ -379,6 +379,31 @@
         </Setter>
     </Style>
 
+    <!-- ===== Заголовок колонки с сортировкой (одинаково во всех списках) =====
+         Content = SortHeaderInfo (ColumnSort): подпись + отдельный маленький значок одного размера.
+         Неактивная колонка: серая (наследует цвет кнопки, при наведении золотая), значок ▾ бледный.
+         Активная (по ней отсортировано): подпись и значок золотые, ▴ - по возрастанию, ▾ - по убыванию. -->
+    <Style x:Key="SortHeader" TargetType="Button" BasedOn="{StaticResource ColumnHeader}">
+        <Setter Property="ContentTemplate">
+            <Setter.Value>
+                <DataTemplate>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock x:Name="lbl" Text="{Binding Label}" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="arr" Text="{Binding Arrow}" FontSize="10" Margin="4,0,0,0" Opacity="0.45"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <DataTemplate.Triggers>
+                        <DataTrigger Binding="{Binding IsActive}" Value="True">
+                            <Setter TargetName="lbl" Property="Foreground" Value="{DynamicResource AccentTextBrush}"/>
+                            <Setter TargetName="arr" Property="Foreground" Value="{DynamicResource AccentTextBrush}"/>
+                            <Setter TargetName="arr" Property="Opacity" Value="1"/>
+                        </DataTrigger>
+                    </DataTemplate.Triggers>
+                </DataTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- ===== Поле ввода ===== -->
     <Style x:Key="DarkTextBox" TargetType="TextBox">
         <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>

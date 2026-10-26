@@ -165,36 +165,17 @@ public static class MaintenanceService
     // ---------- интерпретация результата проверки (по ключевым словам RU+EN) ----------
     private static bool Has(string s, params string[] needles) => needles.Any(n => s.Contains(n));
 
-    private static readonly Regex SizeRx =
-        new(@"(\d+(?:[.,]\d+)?)\s*(TB|GB|MB|KB|ТБ|ГБ|МБ|КБ)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
-    /// <summary>Достаёт объём, который освободит очистка WinSxS (строка «архивные копии…/backups…»).</summary>
-    private static string? ExtractReclaimable(string output)
+    /// <summary>«Number of Reclaimable Packages : 2» / «Число освобождаемых пакетов : 2».</summary>
+    private static int? ReclaimablePackages(string output)
     {
-        // освобождается = «Резервные копии и отключённые компоненты» + «Кэш и временные данные»
-        double mb = 0; bool found = false;
-        foreach (var line in output.Split('\n'))
+        foreach (var raw in output.Split('\n'))
         {
-            var l = line.ToLowerInvariant();
-            bool isBackups = l.Contains("backups") || l.Contains("резервн");
-            bool isCache = l.Contains("cache and temporary") || l.Contains("кэш и времен");
-            if (!isBackups && !isCache) continue;
-
-            var m = SizeRx.Match(line);
-            if (!m.Success) continue;
-            if (!double.TryParse(m.Groups[1].Value.Replace(',', '.'),
-                    NumberStyles.Float, CultureInfo.InvariantCulture, out var num)) continue;
-
-            mb += m.Groups[2].Value.ToUpperInvariant() switch
-            {
-                "TB" or "ТБ" => num * 1024 * 1024,
-                "GB" or "ГБ" => num * 1024,
-                "KB" or "КБ" => num / 1024,
-                _ => num,                       // MB / МБ
-            };
-            found = true;
+            var l = raw.Trim().ToLowerInvariant();
+            if (!l.Contains("reclaimable packages") && !l.Contains("освобождаемых пакетов")) continue;
+            int colon = l.LastIndexOf(':');
+            if (colon >= 0 && int.TryParse(l[(colon + 1)..].Trim(), out int n)) return n;
         }
-        return found ? Format.Bytes((long)(mb * 1024 * 1024)) : null;
+        return null;
     }
 
     public static CheckResult InterpretSfc(string output)
@@ -238,14 +219,53 @@ public static class MaintenanceService
             else if (answer.StartsWith("no") || answer.StartsWith("нет")) recommended = false;
         }
 
-        if (recommended == false) return new(Loc.I["mnt_r_winsxs_no"], false);
+        // справка «из чего состоит хранилище» - без обещаний освободить то, что очистка не тронет
+        string info = StoreInfo(output);
+
+        if (recommended == false) return new(Loc.I["mnt_r_winsxs_no"] + info, false);
         if (recommended == true)
         {
-            var size = ExtractReclaimable(output);
-            return new(size != null
-                ? string.Format(Loc.I["mnt_r_winsxs_yes_sz"], size)
-                : Loc.I["mnt_r_winsxs_yes"], true);
+            // Сколько освободится, DISM заранее не говорит. Строку «Резервные копии и отключённые компоненты»
+            // раньше показывали как «можно освободить ≈3,5 ГБ» - это неправда: обычная очистка её почти не трогает
+            // (проверено 2026-10-26: после очистки там те же 3,54 ГБ). Честно показываем число устаревших пакетов.
+            int? packages = ReclaimablePackages(output);
+            return new((packages is > 0
+                ? string.Format(Loc.I["mnt_r_winsxs_yes_n"], packages)
+                : Loc.I["mnt_r_winsxs_yes"]) + info, true);
         }
-        return new(Loc.I["mnt_analyzed"], true);
+        return new(Loc.I["mnt_analyzed"] + info, true);
+    }
+
+    /// <summary>
+    /// «Хранилище обновлений: 12,1 ГБ, из них резервные копии и отключённые компоненты 3,5 ГБ - очистка их не трогает».
+    /// Строки DISM: «Actual Size of Component Store» / «Фактический размер хранилища компонентов» и
+    /// «Backups and Disabled Features» / «Резервные копии и отключенные компоненты». Единицы DISM пишет по-английски.
+    /// </summary>
+    private static string StoreInfo(string output)
+    {
+        long? total = null, backups = null;
+        foreach (var raw in output.Split('\n'))
+        {
+            var l = raw.Trim().ToLowerInvariant();
+            if (l.Contains("actual size of component store") || l.Contains("фактический размер хранилища")) total = SizeAfterColon(l);
+            else if (l.Contains("backups and disabled") || l.Contains("резервные копии и отключ")) backups = SizeAfterColon(l);
+        }
+        if (total is not > 0 || backups is null) return "";
+        return "\n" + string.Format(Loc.I["mnt_winsxs_info"], Format.Bytes(total.Value), Format.Bytes(backups.Value));
+    }
+
+    // «… : 12.08 GB» / «… :  0 bytes» → байты
+    private static long? SizeAfterColon(string l)
+    {
+        int colon = l.LastIndexOf(':');
+        if (colon < 0) return null;
+        var m = Regex.Match(l[(colon + 1)..], @"([\d.,]+)\s*(tb|gb|mb|kb|bytes|тб|гб|мб|кб|байт)");
+        if (!m.Success || !double.TryParse(m.Groups[1].Value.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out double v))
+            return null;
+        double mul = m.Groups[2].Value switch
+        {
+            "tb" or "тб" => 1L << 40, "gb" or "гб" => 1L << 30, "mb" or "мб" => 1L << 20, "kb" or "кб" => 1L << 10, _ => 1,
+        };
+        return (long)(v * mul);
     }
 }

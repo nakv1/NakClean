@@ -925,11 +925,11 @@
                                     <ColumnDefinition Width="70"/><ColumnDefinition Width="2*"/>
                                     <ColumnDefinition Width="1.4*"/><ColumnDefinition Width="130"/><ColumnDefinition Width="2*"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="{Binding [c_on], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
-                                <TextBlock Grid.Column="1" Text="{Binding [c_program], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
-                                <TextBlock Grid.Column="2" Text="{Binding [c_publisher], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
-                                <TextBlock Grid.Column="3" Text="{Binding [c_location], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
-                                <TextBlock Grid.Column="4" Text="{Binding [c_command], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
+                                <Button Grid.Column="0" Content="{Binding StartupSort[on]}" Style="{StaticResource SortHeader}" Command="{Binding StartupSort.SortCommand}" CommandParameter="on"/>
+                                <Button Grid.Column="1" Content="{Binding StartupSort[name]}" Style="{StaticResource SortHeader}" Command="{Binding StartupSort.SortCommand}" CommandParameter="name"/>
+                                <Button Grid.Column="2" Content="{Binding StartupSort[pub]}" Style="{StaticResource SortHeader}" Command="{Binding StartupSort.SortCommand}" CommandParameter="pub"/>
+                                <Button Grid.Column="3" Content="{Binding StartupSort[loc]}" Style="{StaticResource SortHeader}" Command="{Binding StartupSort.SortCommand}" CommandParameter="loc"/>
+                                <Button Grid.Column="4" Content="{Binding StartupSort[cmd]}" Style="{StaticResource SortHeader}" Command="{Binding StartupSort.SortCommand}" CommandParameter="cmd"/>
                             </Grid>
                             <ListBox Grid.Row="2" Style="{StaticResource DarkList}" Margin="6,0"
                                      ItemsSource="{Binding StartupEntries}" SelectedItem="{Binding SelectedStartup}">
@@ -974,10 +974,10 @@
                                     <ColumnDefinition Width="70"/><ColumnDefinition Width="2*"/>
                                     <ColumnDefinition Width="1.4*"/><ColumnDefinition Width="2.4*"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="{Binding [c_on], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
-                                <TextBlock Grid.Column="1" Text="{Binding [c_name], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
-                                <TextBlock Grid.Column="2" Text="{Binding [c_author], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
-                                <TextBlock Grid.Column="3" Text="{Binding [c_command], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
+                                <Button Grid.Column="0" Content="{Binding TasksSort[on]}" Style="{StaticResource SortHeader}" Command="{Binding TasksSort.SortCommand}" CommandParameter="on"/>
+                                <Button Grid.Column="1" Content="{Binding TasksSort[name]}" Style="{StaticResource SortHeader}" Command="{Binding TasksSort.SortCommand}" CommandParameter="name"/>
+                                <Button Grid.Column="2" Content="{Binding TasksSort[author]}" Style="{StaticResource SortHeader}" Command="{Binding TasksSort.SortCommand}" CommandParameter="author"/>
+                                <Button Grid.Column="3" Content="{Binding TasksSort[cmd]}" Style="{StaticResource SortHeader}" Command="{Binding TasksSort.SortCommand}" CommandParameter="cmd"/>
                             </Grid>
                             <ListBox Grid.Row="2" Style="{StaticResource DarkList}" Margin="6,0"
                                      ItemsSource="{Binding Tasks}" SelectedItem="{Binding SelectedTask}">
@@ -1022,10 +1022,10 @@
                                     <ColumnDefinition Width="110"/><ColumnDefinition Width="2.4*"/>
                                     <ColumnDefinition Width="1.6*"/><ColumnDefinition Width="120"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="{Binding [c_state], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
-                                <TextBlock Grid.Column="1" Text="{Binding [c_service], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
-                                <TextBlock Grid.Column="2" Text="{Binding [c_iname], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
-                                <TextBlock Grid.Column="3" Text="{Binding [c_start], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
+                                <Button Grid.Column="0" Content="{Binding ServicesSort[state]}" Style="{StaticResource SortHeader}" Command="{Binding ServicesSort.SortCommand}" CommandParameter="state"/>
+                                <Button Grid.Column="1" Content="{Binding ServicesSort[name]}" Style="{StaticResource SortHeader}" Command="{Binding ServicesSort.SortCommand}" CommandParameter="name"/>
+                                <Button Grid.Column="2" Content="{Binding ServicesSort[iname]}" Style="{StaticResource SortHeader}" Command="{Binding ServicesSort.SortCommand}" CommandParameter="iname"/>
+                                <Button Grid.Column="3" Content="{Binding ServicesSort[start]}" Style="{StaticResource SortHeader}" Command="{Binding ServicesSort.SortCommand}" CommandParameter="start"/>
                             </Grid>
                             <ListBox Grid.Row="2" Style="{StaticResource DarkList}" Margin="6,0"
                                      ItemsSource="{Binding ServicesView}" SelectedItem="{Binding SelectedService}">
@@ -1069,10 +1069,10 @@
                                     <ColumnDefinition Width="70"/><ColumnDefinition Width="2*"/>
                                     <ColumnDefinition Width="130"/><ColumnDefinition Width="2.4*"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="{Binding [c_on], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
-                                <TextBlock Grid.Column="1" Text="{Binding [c_menuitem], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
-                                <TextBlock Grid.Column="2" Text="{Binding [c_where], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
-                                <TextBlock Grid.Column="3" Text="{Binding [c_command], Source={x:Static loc:Loc.I}}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
+                                <Button Grid.Column="0" Content="{Binding ContextSort[on]}" Style="{StaticResource SortHeader}" Command="{Binding ContextSort.SortCommand}" CommandParameter="on"/>
+                                <Button Grid.Column="1" Content="{Binding ContextSort[item]}" Style="{StaticResource SortHeader}" Command="{Binding ContextSort.SortCommand}" CommandParameter="item"/>
+                                <Button Grid.Column="2" Content="{Binding ContextSort[where]}" Style="{StaticResource SortHeader}" Command="{Binding ContextSort.SortCommand}" CommandParameter="where"/>
+                                <Button Grid.Column="3" Content="{Binding ContextSort[cmd]}" Style="{StaticResource SortHeader}" Command="{Binding ContextSort.SortCommand}" CommandParameter="cmd"/>
                             </Grid>
                             <ListBox Grid.Row="2" Style="{StaticResource DarkList}" Margin="6,0"
                                      ItemsSource="{Binding ContextItems}" SelectedItem="{Binding SelectedContext}">
@@ -1137,16 +1137,16 @@
                             <ColumnDefinition Width="100"/>
                             <ColumnDefinition Width="140"/>
                         </Grid.ColumnDefinitions>
-                        <Button Grid.Column="0" Content="{Binding [uc_program], Source={x:Static loc:Loc.I}}" Style="{StaticResource ColumnHeader}"
-                                Command="{Binding SortAppsCommand}" CommandParameter="name"/>
-                        <Button Grid.Column="1" Content="{Binding [uc_publisher], Source={x:Static loc:Loc.I}}" Style="{StaticResource ColumnHeader}"
-                                Command="{Binding SortAppsCommand}" CommandParameter="pub"/>
-                        <Button Grid.Column="2" Content="{Binding [uc_installed], Source={x:Static loc:Loc.I}}" Style="{StaticResource ColumnHeader}"
-                                Command="{Binding SortAppsCommand}" CommandParameter="date"/>
-                        <Button Grid.Column="3" Content="{Binding [uc_size], Source={x:Static loc:Loc.I}}" Style="{StaticResource ColumnHeader}"
-                                Command="{Binding SortAppsCommand}" CommandParameter="size"/>
-                        <Button Grid.Column="4" Content="{Binding [uc_version], Source={x:Static loc:Loc.I}}" Style="{StaticResource ColumnHeader}"
-                                Command="{Binding SortAppsCommand}" CommandParameter="ver"/>
+                        <Button Grid.Column="0" Content="{Binding AppsSort[name]}" Style="{StaticResource SortHeader}"
+                                Command="{Binding AppsSort.SortCommand}" CommandParameter="name"/>
+                        <Button Grid.Column="1" Content="{Binding AppsSort[pub]}" Style="{StaticResource SortHeader}"
+                                Command="{Binding AppsSort.SortCommand}" CommandParameter="pub"/>
+                        <Button Grid.Column="2" Content="{Binding AppsSort[date]}" Style="{StaticResource SortHeader}"
+                                Command="{Binding AppsSort.SortCommand}" CommandParameter="date"/>
+                        <Button Grid.Column="3" Content="{Binding AppsSort[size]}" Style="{StaticResource SortHeader}"
+                                Command="{Binding AppsSort.SortCommand}" CommandParameter="size"/>
+                        <Button Grid.Column="4" Content="{Binding AppsSort[ver]}" Style="{StaticResource SortHeader}"
+                                Command="{Binding AppsSort.SortCommand}" CommandParameter="ver"/>
                     </Grid>
 
                     <ListBox Grid.Row="3" Style="{StaticResource DarkList}" Margin="6,0"
@@ -1247,13 +1247,61 @@
                     <Border Grid.Row="2" Style="{StaticResource Card}" Margin="6,0,6,8" Padding="14,8"
                             Visibility="{Binding IsChecked, ElementName=FlModeAnalyze, Converter={StaticResource BoolVis}}">
                         <Grid>
-                            <StackPanel>
-                                <TextBlock Text="{Binding TargetDisplay}" FontWeight="SemiBold" Foreground="{DynamicResource AccentTextBrush}" TextTrimming="CharacterEllipsis"/>
-                                <TextBlock Text="{Binding ScanStats}" Foreground="{DynamicResource MutedBrush}" FontSize="12" Margin="0,3,0,0"/>
-                                <TextBlock Text="{Binding ScanDrive}" Foreground="{DynamicResource MutedBrush}" FontSize="12" Margin="0,1,0,0"/>
-                            </StackPanel>
-                            <TextBlock Text="{Binding ScanStatus}" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="{Binding TargetDisplay}" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource AccentTextBrush}"
+                                       TextTrimming="CharacterEllipsis" Margin="0,0,140,0"/>
+                            <TextBlock Text="{Binding ScanStatus}" HorizontalAlignment="Right" VerticalAlignment="Center"
                                        Foreground="{DynamicResource MutedBrush}" FontSize="12"/>
+
+                            <!-- цифры: подпись сверху (приглушённо), значение снизу (светлое, крупнее) -->
+                            <WrapPanel Grid.Row="1" Margin="0,8,0,0" Visibility="{Binding HasScanStats, Converter={StaticResource BoolVis}}">
+                                <WrapPanel.Resources>
+                                    <Style x:Key="StLabel" TargetType="TextBlock">
+                                        <Setter Property="FontSize" Value="11"/>
+                                        <Setter Property="Foreground" Value="{DynamicResource MutedBrush}"/>
+                                    </Style>
+                                    <Style x:Key="StValue" TargetType="TextBlock">
+                                        <Setter Property="FontSize" Value="15"/>
+                                        <Setter Property="FontWeight" Value="SemiBold"/>
+                                        <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+                                        <Setter Property="Margin" Value="0,1,0,0"/>
+                                    </Style>
+                                </WrapPanel.Resources>
+                                <StackPanel Margin="0,0,30,0">
+                                    <TextBlock Text="{Binding [st_files], Source={x:Static loc:Loc.I}}" Style="{StaticResource StLabel}"/>
+                                    <TextBlock Text="{Binding StFiles}" Style="{StaticResource StValue}"/>
+                                </StackPanel>
+                                <StackPanel Margin="0,0,30,0">
+                                    <TextBlock Text="{Binding [st_size], Source={x:Static loc:Loc.I}}" Style="{StaticResource StLabel}"/>
+                                    <TextBlock Text="{Binding StSize}" Style="{StaticResource StValue}"/>
+                                </StackPanel>
+                                <StackPanel Margin="0,0,30,0">
+                                    <TextBlock Text="{Binding [st_alloc], Source={x:Static loc:Loc.I}}" Style="{StaticResource StLabel}"/>
+                                    <TextBlock Text="{Binding StAlloc}" Style="{StaticResource StValue}"/>
+                                </StackPanel>
+                                <Border Width="1" Background="{DynamicResource CtrlBorderBrush}" Margin="0,2,30,2"
+                                        Visibility="{Binding HasScanDrive, Converter={StaticResource BoolVis}}"/>
+                                <StackPanel Margin="0,0,30,0" Visibility="{Binding HasScanDrive, Converter={StaticResource BoolVis}}">
+                                    <TextBlock Text="{Binding [st_used], Source={x:Static loc:Loc.I}}" Style="{StaticResource StLabel}"/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding StUsed}" Style="{StaticResource StValue}"/>
+                                        <TextBlock Text="{Binding StUsedSub}" FontSize="11.5" Foreground="{DynamicResource MutedBrush}"
+                                                   VerticalAlignment="Bottom" Margin="6,0,0,2"/>
+                                    </StackPanel>
+                                </StackPanel>
+                                <StackPanel Margin="0,0,30,0" Visibility="{Binding HasScanDrive, Converter={StaticResource BoolVis}}">
+                                    <TextBlock Text="{Binding [st_free], Source={x:Static loc:Loc.I}}" Style="{StaticResource StLabel}"/>
+                                    <TextBlock Text="{Binding StFree}" Style="{StaticResource StValue}"/>
+                                </StackPanel>
+                                <StackPanel Visibility="{Binding HasScanReserved, Converter={StaticResource BoolVis}}"
+                                            ToolTip="{Binding [st_reserved_tip], Source={x:Static loc:Loc.I}}" Background="Transparent">
+                                    <TextBlock Text="{Binding [st_reserved], Source={x:Static loc:Loc.I}}" Style="{StaticResource StLabel}"/>
+                                    <TextBlock Text="{Binding StReserved}" Style="{StaticResource StValue}"/>
+                                </StackPanel>
+                            </WrapPanel>
                         </Grid>
                     </Border>
 
@@ -1519,14 +1567,14 @@
                                         <ColumnDefinition Width="90"/>
                                         <ColumnDefinition Width="140"/>
                                     </Grid.ColumnDefinitions>
-                                    <Button Grid.Column="0" Content="{Binding SearchNameHeader}" Style="{StaticResource ColumnHeader}"
-                                            Command="{Binding SortSearchCommand}" CommandParameter="name"/>
+                                    <Button Grid.Column="0" Content="{Binding SearchColumns[name]}" Style="{StaticResource SortHeader}"
+                                            Command="{Binding SearchColumns.SortCommand}" CommandParameter="name"/>
                                     <TextBlock Grid.Column="1" Text="{Binding [fs_c_folder2], Source={x:Static loc:Loc.I}}" FontSize="11"
                                                Foreground="{DynamicResource MutedBrush}" TextTrimming="CharacterEllipsis"/>
-                                    <Button Grid.Column="2" Content="{Binding SearchSizeHeader}" Style="{StaticResource ColumnHeader}" HorizontalAlignment="Right"
-                                            Command="{Binding SortSearchCommand}" CommandParameter="size"/>
-                                    <Button Grid.Column="3" Content="{Binding SearchDateHeader}" Style="{StaticResource ColumnHeader}" HorizontalAlignment="Right"
-                                            Command="{Binding SortSearchCommand}" CommandParameter="date"/>
+                                    <Button Grid.Column="2" Content="{Binding SearchColumns[size]}" Style="{StaticResource SortHeader}" HorizontalAlignment="Right"
+                                            Command="{Binding SearchColumns.SortCommand}" CommandParameter="size"/>
+                                    <Button Grid.Column="3" Content="{Binding SearchColumns[date]}" Style="{StaticResource SortHeader}" HorizontalAlignment="Right"
+                                            Command="{Binding SearchColumns.SortCommand}" CommandParameter="date"/>
                                 </Grid>
                                 <ListBox x:Name="SearchList" Grid.Row="1" Style="{StaticResource DarkList}"
                                          ItemContainerStyle="{StaticResource RowItem}"
@@ -1645,12 +1693,12 @@
                             <ColumnDefinition Width="110"/>
                         </Grid.ColumnDefinitions>
                         <CheckBox Grid.Column="0" Visibility="Hidden"/>   <!-- держит ширину колонки галочек -->
-                        <Button Grid.Column="1" Margin="12,0" Content="{Binding RecNameHeader}" Style="{StaticResource ColumnHeader}"
-                                Command="{Binding SortRecoveryCommand}" CommandParameter="name"/>
-                        <Button Grid.Column="3" Margin="0,0,10,0" Content="{Binding RecSizeHeader}" Style="{StaticResource ColumnHeader}" HorizontalAlignment="Right"
-                                Command="{Binding SortRecoveryCommand}" CommandParameter="size"/>
-                        <Button Grid.Column="4" Content="{Binding RecChanceHeader}" Style="{StaticResource ColumnHeader}" HorizontalAlignment="Right"
-                                Command="{Binding SortRecoveryCommand}" CommandParameter="chance"/>
+                        <Button Grid.Column="1" Margin="12,0" Content="{Binding RecColumns[name]}" Style="{StaticResource SortHeader}"
+                                Command="{Binding RecColumns.SortCommand}" CommandParameter="name"/>
+                        <Button Grid.Column="3" Margin="0,0,10,0" Content="{Binding RecColumns[size]}" Style="{StaticResource SortHeader}" HorizontalAlignment="Right"
+                                Command="{Binding RecColumns.SortCommand}" CommandParameter="size"/>
+                        <Button Grid.Column="4" Content="{Binding RecColumns[chance]}" Style="{StaticResource SortHeader}" HorizontalAlignment="Right"
+                                Command="{Binding RecColumns.SortCommand}" CommandParameter="chance"/>
                     </Grid>
 
                     <!-- Список удалённых -->

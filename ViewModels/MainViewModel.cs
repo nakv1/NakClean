@@ -23,6 +23,10 @@ public sealed partial class MainViewModel : ViewModelBase
     public ObservableCollection<HealthSection> HealthColLeft { get; } = new();
     public ObservableCollection<HealthSection> HealthColRight { get; } = new();
     public ObservableCollection<StartupEntryVm> StartupEntries { get; } = new();
+    public ColumnSort StartupSort { get; }
+    public ColumnSort TasksSort { get; }
+    public ColumnSort ServicesSort { get; }
+    public ColumnSort ContextSort { get; }
     public ObservableCollection<InstalledAppVm> Apps { get; } = new();
     public ICollectionView AppsView { get; }
     public ObservableCollection<RegScanOption> RegOptions { get; } = new();
@@ -58,7 +62,6 @@ public sealed partial class MainViewModel : ViewModelBase
     public RelayCommand RepairCommand { get; }
     public RelayCommand RenameCommand { get; }
     public RelayCommand RemoveEntryCommand { get; }
-    public RelayCommand SortAppsCommand { get; }
     public RelayCommand ScanRegistryCommand { get; }
     public RelayCommand FixRegistryCommand { get; }
     public RelayCommand RestoreBackupCommand { get; }
@@ -125,7 +128,6 @@ public sealed partial class MainViewModel : ViewModelBase
         RepairCommand = new RelayCommand(Repair, () => SelectedApp is { CanRepair: true });
         RenameCommand = new RelayCommand(RenameApp, () => SelectedApp != null);
         RemoveEntryCommand = new RelayCommand(RemoveAppEntry, () => SelectedApp != null);
-        SortAppsCommand = new RelayCommand(p => SortApps(p as string ?? "name"));
         ScanRegistryCommand = new RelayCommand(async () => await ScanRegistryAsync(), () => !RegBusy);
         FixRegistryCommand = new RelayCommand(async () => await FixRegistryAsync(), () => !RegBusy && RegIssues.Count > 0);
         RestoreBackupCommand = new RelayCommand(async () => await RestoreBackupAsync(), () => SelectedBackup != null);
@@ -136,6 +138,12 @@ public sealed partial class MainViewModel : ViewModelBase
 
         AppsView = CollectionViewSource.GetDefaultView(Apps);
         AppsView.Filter = AppFilter;
+        // дата установки и размер - первым кликом сначала новые и большие
+        AppsSort = new ColumnSort(AppsView,
+                ("name", "uc_program", nameof(InstalledAppVm.Name), false), ("pub", "uc_publisher", nameof(InstalledAppVm.Publisher), false),
+                ("date", "uc_installed", nameof(InstalledAppVm.SortDate), true), ("size", "uc_size", nameof(InstalledAppVm.SortSize), true),
+                ("ver", "uc_version", nameof(InstalledAppVm.Version), false))
+            .Initial("name", false);
 
         foreach (var c in RegistryScanService.Categories)
             RegOptions.Add(new RegScanOption { Id = c.Id, Name = c.Name });
@@ -151,6 +159,21 @@ public sealed partial class MainViewModel : ViewModelBase
         DisableServiceCommand = new RelayCommand(() => ToggleService(false), () => SelectedService != null);
 
         ServicesView = CollectionViewSource.GetDefaultView(Services);
+
+        // сортировка кликом по заголовкам во вкладке «Запуск» («Вкл»: сначала «Да»)
+        StartupSort = new ColumnSort(CollectionViewSource.GetDefaultView(StartupEntries),
+            ("on", "c_on", nameof(StartupEntryVm.Enabled), true), ("name", "c_program", nameof(StartupEntryVm.Name), false),
+            ("pub", "c_publisher", nameof(StartupEntryVm.Publisher), false), ("loc", "c_location", nameof(StartupEntryVm.LocationLabel), false),
+            ("cmd", "c_command", nameof(StartupEntryVm.Command), false));
+        TasksSort = new ColumnSort(CollectionViewSource.GetDefaultView(Tasks),
+            ("on", "c_on", nameof(TaskEntryVm.Enabled), true), ("name", "c_name", nameof(TaskEntryVm.Name), false),
+            ("author", "c_author", nameof(TaskEntryVm.Author), false), ("cmd", "c_command", nameof(TaskEntryVm.Command), false));
+        ServicesSort = new ColumnSort(ServicesView,
+            ("state", "c_state", nameof(ServiceEntryVm.StateText), false), ("name", "c_service", nameof(ServiceEntryVm.DisplayName), false),
+            ("iname", "c_iname", nameof(ServiceEntryVm.Name), false), ("start", "c_start", nameof(ServiceEntryVm.StartModeText), false));
+        ContextSort = new ColumnSort(CollectionViewSource.GetDefaultView(ContextItems),
+            ("on", "c_on", nameof(ContextMenuEntryVm.Enabled), true), ("item", "c_menuitem", nameof(ContextMenuEntryVm.DisplayName), false),
+            ("where", "c_where", nameof(ContextMenuEntryVm.Location), false), ("cmd", "c_command", nameof(ContextMenuEntryVm.Command), false));
         ServicesView.Filter = ServiceFilter;
 
         RefreshContextCommand = new RelayCommand(async () => await LoadContextAsync());
@@ -177,7 +200,10 @@ public sealed partial class MainViewModel : ViewModelBase
         RecoverSelectedCommand = new RelayCommand(async () => await RecoverSelectedAsync(), () => !RecoveryBusy);
         FindCopiesCommand = new RelayCommand(async () => await FindCopiesAsync(), () => !RecoveryBusy);
         SelectCategoryCommand = new RelayCommand(p => SelectCategory(p as string ?? "all"));
-        SortRecoveryCommand = new RelayCommand(p => SortRecovery(p as string));
+        // размер и шанс - первым кликом сначала большие, имя - от А; по умолчанию - шанс
+        RecColumns = new ColumnSort((key, desc) => { _recSort = key; _recDesc = desc; _ = ApplyRecoveryQueryAsync(0); },
+                ("name", "fs_c_name", "", false), ("size", "fs_c_size", "", true), ("chance", "rec_c_chance", "", true))
+            .Initial("chance", true);
         RecoveredView = CollectionViewSource.GetDefaultView(Recovered);
         RecoveredView.Filter = RecoveryFilter;
         BuildRecoveryDrives();
@@ -861,22 +887,8 @@ public sealed partial class MainViewModel : ViewModelBase
 
     private string _recSort = "chance";   // chance / name / size
     private bool _recDesc = true;
-    public string RecNameHeader => RecHeader("fs_c_name", "name");
-    public string RecSizeHeader => RecHeader("fs_c_size", "size");
-    public string RecChanceHeader => RecHeader("rec_c_chance", "chance");
-    private string RecHeader(string key, string sort) => Loc.I[key] + (_recSort == sort ? (_recDesc ? "  ▼" : "  ▲") : "");
-    public RelayCommand SortRecoveryCommand { get; private set; } = null!;
-
-    private void SortRecovery(string? key)
-    {
-        key ??= "chance";
-        if (key == _recSort) _recDesc = !_recDesc;
-        else { _recSort = key; _recDesc = key != "name"; }   // размер и шанс - сначала большие, имя - от А
-        OnPropertyChanged(nameof(RecNameHeader));
-        OnPropertyChanged(nameof(RecSizeHeader));
-        OnPropertyChanged(nameof(RecChanceHeader));
-        _ = ApplyRecoveryQueryAsync(0);
-    }
+    /// <summary>Заголовки «Восстановления» (общий вид сортировки); сортирует ВСЕ найденные, а не только показанные.</summary>
+    public ColumnSort RecColumns { get; }
 
     private async Task ApplyRecoveryQueryAsync(int delayMs)
     {
@@ -1264,6 +1276,7 @@ public sealed partial class MainViewModel : ViewModelBase
         foreach (var t in Tasks) t.RaiseLocalized();
         foreach (var s in Services) s.Refresh();
         foreach (var c in ContextItems) c.RaiseLocalized();
+        StartupSort.RaiseLocalized(); TasksSort.RaiseLocalized(); ServicesSort.RaiseLocalized(); ContextSort.RaiseLocalized();
         OnPropertyChanged(nameof(SessionFreedLine));
         ReloadChangeLog();   // журнал — перечитать локализованные имена
 
@@ -1289,11 +1302,11 @@ public sealed partial class MainViewModel : ViewModelBase
         ContextNote = Loc.I["cx_default"];
         OnPropertyChanged(nameof(TargetDisplay));
         OnPropertyChanged(nameof(MapTitle));
+        UpdateScanStats();              // шапка анализа: «из N · %» на новом языке
         LoadDrives();                   // пересобрать подписи дисков на новом языке
         OnSearchLanguageChanged();
-        OnPropertyChanged(nameof(RecNameHeader));
-        OnPropertyChanged(nameof(RecSizeHeader));
-        OnPropertyChanged(nameof(RecChanceHeader));
+        RecColumns.RaiseLocalized();
+        AppsSort.RaiseLocalized();
         BuildHardwareCards();           // «Железо» + плитки сводки - из уже прочитанных данных, без повторного опроса
         BuildBootView();
         BuildCrashView();
@@ -1687,27 +1700,8 @@ public sealed partial class MainViewModel : ViewModelBase
         }
     }
 
-    private string _appSortKey = "name";
-    private bool _appSortAsc = true;
-
-    private void SortApps(string key)
-    {
-        if (_appSortKey == key) _appSortAsc = !_appSortAsc;
-        else { _appSortKey = key; _appSortAsc = true; }
-
-        string prop = key switch
-        {
-            "pub" => nameof(InstalledAppVm.Publisher),
-            "date" => nameof(InstalledAppVm.SortDate),
-            "size" => nameof(InstalledAppVm.SortSize),
-            "ver" => nameof(InstalledAppVm.Version),
-            _ => nameof(InstalledAppVm.Name),
-        };
-        var dir = _appSortAsc ? ListSortDirection.Ascending : ListSortDirection.Descending;
-        AppsView.SortDescriptions.Clear();
-        AppsView.SortDescriptions.Add(new SortDescription(prop, dir));
-        AppsView.Refresh();
-    }
+    /// <summary>Заголовки «Удаления программ» (общий вид сортировки); по умолчанию - по имени.</summary>
+    public ColumnSort AppsSort { get; }
 
     private void Repair()
     {
@@ -2279,11 +2273,40 @@ public sealed partial class MainViewModel : ViewModelBase
     private string _scanStatus = Loc.I["note_scan"];
     public string ScanStatus { get => _scanStatus; private set => Set(ref _scanStatus, value); }
 
-    private string _scanStats = "";
-    public string ScanStats { get => _scanStats; private set => Set(ref _scanStats, value); }
+    // ---------- шапка анализа: подпись сверху, светлое число снизу ----------
+    private long _scanDriveTotal, _scanDriveFree, _scanReserved = -1;
+    public string StFiles { get; private set; } = "";
+    public string StSize { get; private set; } = "";
+    public string StAlloc { get; private set; } = "";
+    public string StUsed { get; private set; } = "";
+    public string StUsedSub { get; private set; } = "";
+    public string StFree { get; private set; } = "";
+    public string StReserved { get; private set; } = "";
+    public bool HasScanStats { get; private set; }
+    public bool HasScanDrive => HasScanStats && _scanDriveTotal > 0;
+    public bool HasScanReserved => HasScanDrive && _scanReserved >= 0;
 
-    private string _scanDrive = "";
-    public string ScanDrive { get => _scanDrive; private set => Set(ref _scanDrive, value); }
+    private void UpdateScanStats()
+    {
+        HasScanStats = _scanRoot != null;
+        if (_scanRoot != null)
+        {
+            StFiles = _scanFileCount.ToString("N0");
+            StSize = Format.Bytes(_scanRoot.Size);
+            StAlloc = Format.Bytes(_scanTotalAlloc);
+        }
+        if (_scanDriveTotal > 0)
+        {
+            long used = _scanDriveTotal - _scanDriveFree;
+            StUsed = Format.Bytes(used);
+            StUsedSub = string.Format(Loc.I["st_used_sub"], Format.Bytes(_scanDriveTotal), (used * 100.0 / _scanDriveTotal).ToString("0"));
+            StFree = Format.Bytes(_scanDriveFree);
+            StReserved = _scanReserved >= 0 ? Format.Bytes(_scanReserved) : "";
+        }
+        foreach (var p in new[] { nameof(StFiles), nameof(StSize), nameof(StAlloc), nameof(StUsed), nameof(StUsedSub),
+                                  nameof(StFree), nameof(StReserved), nameof(HasScanStats), nameof(HasScanDrive), nameof(HasScanReserved) })
+            OnPropertyChanged(p);
+    }
 
     private long _scanTotalSize;
 
@@ -2359,10 +2382,11 @@ public sealed partial class MainViewModel : ViewModelBase
             FilesList = files;
             MapRoot = res.Root;
 
-            ScanStats = string.Format(Loc.I["fs_stats"], res.FileCount.ToString("N0"), Format.Bytes(res.TotalSize), Format.Bytes(res.TotalAlloc));
-            ScanDrive = res.DriveTotal > 0
-                ? string.Format(Loc.I["fs_drive"], Format.Bytes(res.DriveUsed), Format.Bytes(res.DriveTotal), (res.DriveUsed * 100.0 / res.DriveTotal).ToString("0"), Format.Bytes(res.DriveFree))
-                : "";
+            _scanDriveTotal = res.DriveTotal;
+            _scanDriveFree = res.DriveFree;
+            // весь диск: занято на томе минус файлы на диске = резерв Windows под обновления + служебное NTFS
+            _scanReserved = res.WholeDrive ? Math.Max(0, res.DriveUsed - res.TotalAlloc) : -1;
+            UpdateScanStats();
             ScanStatus = string.Format(Loc.I["fs_done"], res.Elapsed.TotalSeconds.ToString("0.0"));
         }
         catch (Exception ex) { ScanStatus = string.Format(Loc.I["err"], ex.Message); }
@@ -2529,7 +2553,7 @@ public sealed partial class MainViewModel : ViewModelBase
         foreach (var e in _scanExts) Extensions.Add(new ExtRowVm(e, _scanTotalSize, k++));
 
         if (_scanRoot != null)
-            ScanStats = string.Format(Loc.I["fs_stats"], _scanFileCount.ToString("N0"), Format.Bytes(_scanRoot.Size), Format.Bytes(_scanTotalAlloc));
+            UpdateScanStats();
 
         // карта: если открыта удалённая папка (или внутри неё) - подняться к родителю; перерисовать
         var map = MapRoot;

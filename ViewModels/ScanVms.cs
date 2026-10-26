@@ -79,7 +79,6 @@ public sealed class ExtRowVm
     public ExtRowVm(ExtStat s, long totalSize, int colorIndex)
     {
         Ext = s.Ext;
-        TypeName = s.TypeName;
         SizeText = Format.Bytes(s.Size);
         AllocText = Format.Bytes(s.Alloc);
         FilesText = s.Files.ToString("N0");
@@ -90,7 +89,12 @@ public sealed class ExtRowVm
     }
 
     public string Ext { get; }
-    public string TypeName { get; }
+    /// <summary>
+    /// Название типа у Windows спрашиваем, только когда строка появилась на экране (список виртуальный).
+    /// На C: бывает ~12 тыс. разных расширений (кэши программ) - опрос всех занимал ~43 с из 53 с анализа.
+    /// </summary>
+    public string TypeName => _typeName ??= FileScanService.FriendlyType(Ext);
+    private string? _typeName;
     public string SizeText { get; }
     public string AllocText { get; }
     public string FilesText { get; }

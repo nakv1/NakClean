@@ -57,7 +57,9 @@ public static partial class NtfsMftReader
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool ReadFile(SafeFileHandle h, IntPtr buffer, uint toRead, out uint read, IntPtr ov);
 
-    private struct Rec { public string? Name; public long Parent; public long Size; public bool IsDir; public bool InUse; public byte Ns; }
+    /// <summary>Запись оглавления тома. Alloc - сколько файл РЕАЛЬНО занимает на диске (с учётом сжатия и «дырявых»
+    /// файлов, включая сжатые потоки CompactOS), а не размер, округлённый до кластера.</summary>
+    internal struct Rec { public string? Name; public long Parent; public long Size; public long Alloc; public bool IsDir; public bool InUse; public byte Ns; }
 
     public static bool IsNtfs(char drive)
     {
@@ -69,51 +71,8 @@ public static partial class NtfsMftReader
     public static List<(string path, long size)> EnumerateFiles(char drive, CancellationToken ct)
     {
         var files = new List<(string, long)>();
-        using var h = CreateFile($@"\\.\{drive}:", GENERIC_READ, FILE_SHARE_RW, IntPtr.Zero, OPEN_EXISTING, 0, IntPtr.Zero);
-        if (h.IsInvalid) return files;
-
-        var vd = new byte[128];
-        if (!DeviceIoControl(h, FSCTL_GET_NTFS_VOLUME_DATA, IntPtr.Zero, 0, vd, (uint)vd.Length, out _, IntPtr.Zero))
-            return files;
-
-        uint bytesPerSector = BitConverter.ToUInt32(vd, 40);
-        uint bytesPerCluster = BitConverter.ToUInt32(vd, 44);
-        uint recSize = BitConverter.ToUInt32(vd, 48);
-        long mftValidLen = BitConverter.ToInt64(vd, 56);
-        long mftStartLcn = BitConverter.ToInt64(vd, 64);
-        if (bytesPerCluster == 0 || recSize == 0 || bytesPerSector == 0) return files;
-
-        // запись 0 = $MFT: берём её data-runs, чтобы прочитать всю таблицу
-        var rec0 = ReadAt(h, mftStartLcn * bytesPerCluster, AlignUp((int)bytesPerCluster, (int)bytesPerSector));
-        if (rec0.Length < recSize) return files;
-        ApplyFixup(rec0, 0, (int)recSize, (int)bytesPerSector);
-        var runs = GetMftDataRuns(rec0, 0, (int)recSize);
-        if (runs.Count == 0) return files;
-
-        long totalRecords = mftValidLen / recSize;
-        var dict = new Dictionary<long, Rec>(capacity: (int)Math.Min(Math.Max(totalRecords, 16), 4_000_000));
-        long index = 0;
-        const int chunk = 8 * 1024 * 1024;
-
-        foreach (var (lcn, count) in runs)
-        {
-            if (index >= totalRecords) break;
-            ct.ThrowIfCancellationRequested();
-            long pos = lcn * bytesPerCluster;
-            long remaining = count * bytesPerCluster;
-            while (remaining > 0 && index < totalRecords)
-            {
-                int toRead = (int)Math.Min(chunk, remaining);
-                toRead -= toRead % (int)recSize;
-                if (toRead <= 0) toRead = (int)recSize;
-                var buf = ReadAt(h, pos, toRead);
-                if (buf.Length < recSize) break;
-                for (int o = 0; o + recSize <= buf.Length && index < totalRecords; o += (int)recSize, index++)
-                    ParseRecord(buf, o, (int)recSize, (int)bytesPerSector, index, dict);
-                pos += toRead;
-                remaining -= toRead;
-            }
-        }
+        var dict = ReadTable(drive, ct);
+        if (dict is null) return files;
 
         // строим полные пути по цепочке родителей
         var cache = new Dictionary<long, string?>();
@@ -142,6 +101,70 @@ public static partial class NtfsMftReader
             files.Add((folder + "\\" + r.Name, r.Size));
         }
         return files;
+    }
+
+    /// <summary>
+    /// Всё оглавление тома (запись № → имя, родитель, размер, занято на диске). null - не удалось (нет прав / не NTFS).
+    /// «Анализ места» строит дерево прямо отсюда, без полных путей-строк - так в разы быстрее.
+    /// </summary>
+    internal static Dictionary<long, Rec>? ReadTable(char drive, CancellationToken ct)
+    {
+        using var h = CreateFile($@"\\.\{drive}:", GENERIC_READ, FILE_SHARE_RW, IntPtr.Zero, OPEN_EXISTING, 0, IntPtr.Zero);
+        if (h.IsInvalid) return null;
+
+        var vd = new byte[128];
+        if (!DeviceIoControl(h, FSCTL_GET_NTFS_VOLUME_DATA, IntPtr.Zero, 0, vd, (uint)vd.Length, out _, IntPtr.Zero))
+            return null;
+
+        uint bytesPerSector = BitConverter.ToUInt32(vd, 40);
+        uint bytesPerCluster = BitConverter.ToUInt32(vd, 44);
+        uint recSize = BitConverter.ToUInt32(vd, 48);
+        long mftValidLen = BitConverter.ToInt64(vd, 56);
+        long mftStartLcn = BitConverter.ToInt64(vd, 64);
+        if (bytesPerCluster == 0 || recSize == 0 || bytesPerSector == 0) return null;
+
+        // запись 0 = $MFT: берём её data-runs, чтобы прочитать всю таблицу
+        var rec0 = ReadAt(h, mftStartLcn * bytesPerCluster, AlignUp((int)bytesPerCluster, (int)bytesPerSector));
+        if (rec0.Length < recSize) return null;
+        ApplyFixup(rec0, 0, (int)recSize, (int)bytesPerSector);
+        var runs = GetMftDataRuns(rec0, 0, (int)recSize);
+        if (runs.Count == 0) return null;
+
+        long totalRecords = mftValidLen / recSize;
+        var dict = new Dictionary<long, Rec>(capacity: (int)Math.Min(Math.Max(totalRecords, 16), 4_000_000));
+        var extSizes = new Dictionary<long, (long size, long alloc)>();
+        long index = 0;
+        const int chunk = 8 * 1024 * 1024;
+
+        foreach (var (lcn, count) in runs)
+        {
+            if (index >= totalRecords) break;
+            ct.ThrowIfCancellationRequested();
+            long pos = lcn * bytesPerCluster;
+            long remaining = count * bytesPerCluster;
+            while (remaining > 0 && index < totalRecords)
+            {
+                int toRead = (int)Math.Min(chunk, remaining);
+                toRead -= toRead % (int)recSize;
+                if (toRead <= 0) toRead = (int)recSize;
+                var buf = ReadAt(h, pos, toRead);
+                if (buf.Length < recSize) break;
+                for (int o = 0; o + recSize <= buf.Length && index < totalRecords; o += (int)recSize, index++)
+                    ParseRecord(buf, o, (int)recSize, (int)bytesPerSector, index, dict, extSizes);
+                pos += toRead;
+                remaining -= toRead;
+            }
+        }
+
+        // размеры больших файлов из доп. записей - в их основные записи (место на диске - добавляем)
+        foreach (var (baseIdx, ext) in extSizes)
+            if (dict.TryGetValue(baseIdx, out var br))
+            {
+                if (br.Size == 0) br.Size = ext.size;
+                br.Alloc += ext.alloc;
+                dict[baseIdx] = br;
+            }
+        return dict;
     }
 
     // ===================== ВОССТАНОВЛЕНИЕ УДАЛЁННЫХ ФАЙЛОВ =====================
@@ -694,7 +717,11 @@ public static partial class NtfsMftReader
         return alloc * 2 < total ? 1 : 0;         // частично/полностью занято - перезаписано
     }
 
-    private static void ParseRecord(byte[] b, int o, int recSize, int sector, long index, Dictionary<long, Rec> dict)
+    /// <param name="extSizes">размеры из ДОП. записей: у больших/сильно раздробленных файлов $DATA лежит не в основной
+    /// записи (там только $ATTRIBUTE_LIST), а в доп. записи со ссылкой на основную. Без этого такие файлы считались
+    /// нулевыми - «Анализ места» терял десятки ГБ (снимки Windows, образы виртуальных машин, большие архивы).</param>
+    private static void ParseRecord(byte[] b, int o, int recSize, int sector, long index, Dictionary<long, Rec> dict,
+                                    Dictionary<long, (long size, long alloc)> extSizes)
     {
         if (b[o] != (byte)'F' || b[o + 1] != (byte)'I' || b[o + 2] != (byte)'L' || b[o + 3] != (byte)'E') return;
         ApplyFixup(b, o, recSize, sector);
@@ -702,9 +729,10 @@ public static partial class NtfsMftReader
         ushort flags = U16(b, o + 22);
         bool inUse = (flags & 1) != 0;
         bool isDir = (flags & 2) != 0;
+        long baseRef = I64(b, o + 0x20) & 0x0000FFFFFFFFFFFF;   // != 0 - это доп. запись другого файла
         int p = o + U16(b, o + 20);
 
-        string? name = null; byte bestNs = 255; long parent = 0; long size = 0;
+        string? name = null; byte bestNs = 255; long parent = 0; long size = 0, alloc = 0;
 
         while (p + 8 <= o + recSize)
         {
@@ -714,6 +742,18 @@ public static partial class NtfsMftReader
             if (len <= 0 || p + len > o + recSize) break;
             byte nonRes = b[p + 8];
             byte nameLen = b[p + 9];
+
+            // место на диске: любой поток данных, обычный или именованный (сжатые CompactOS хранят данные
+            // в потоке WofCompressedData). Только первый кусок атрибута (VCN 0) - в нём размеры всего потока.
+            // У сжатых и «дырявых» потоков реально занятое - отдельное поле (+0x40), у остальных - выделенное (+0x28).
+            // У служебных файлов NTFS (записи 0-23) именованные потоки не считаем: в $BadClus поток $Bad «размером
+            // со весь диск» (так NTFS помечает сбойные места) - с ним «на диске» выходило 420 ГБ на диске в 221 ГБ.
+            if (type == 0x80 && nonRes != 0 && p + 0x40 <= o + recSize && I64(b, p + 0x10) == 0
+                && (nameLen == 0 || (index >= 24 && (baseRef == 0 || baseRef >= 24))))
+            {
+                ushort aflags = U16(b, p + 0x0C);
+                alloc += (aflags & 0x8001) != 0 && p + 0x48 <= o + recSize ? I64(b, p + 0x40) : I64(b, p + 0x28);
+            }
 
             if (type == 0x30) // $FILE_NAME (resident)
             {
@@ -736,14 +776,25 @@ public static partial class NtfsMftReader
             }
             else if (type == 0x80 && nameLen == 0) // безымянный $DATA = размер файла
             {
-                if (nonRes == 0) size = U32(b, p + 16);          // резидентный: длина значения
-                else size = I64(b, p + 48);                       // нерезидентный: реальный размер
+                if (nonRes == 0) size = U32(b, p + 16);                       // резидентный: длина значения
+                else if (I64(b, p + 16) == 0) size = I64(b, p + 48);          // нерезидентный: реальный размер - только в первом куске
             }
             p += len;
         }
 
+        if (baseRef != 0 && baseRef != index)
+        {
+            // данные принадлежат основной записи; доп. записей у файла может быть несколько - место складываем
+            if (inUse && (size > 0 || alloc > 0))
+            {
+                extSizes.TryGetValue(baseRef, out var cur);
+                extSizes[baseRef] = (size > 0 ? size : cur.size, cur.alloc + alloc);
+            }
+            return;
+        }
+
         if (name is not null)
-            dict[index] = new Rec { Name = name, Parent = parent, Size = size, IsDir = isDir, InUse = inUse, Ns = bestNs };
+            dict[index] = new Rec { Name = name, Parent = parent, Size = size, Alloc = alloc, IsDir = isDir, InUse = inUse, Ns = bestNs };
     }
 
     private static List<(long lcn, long count)> GetMftDataRuns(byte[] b, int o, int recSize)

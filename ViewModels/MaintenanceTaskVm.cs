@@ -214,6 +214,9 @@ public sealed class MaintenanceTaskVm : ViewModelBase
             }
         });
 
+        // очистка WinSxS: сколько реально освободилось - по свободному месту системного диска до и после
+        bool measure = !review && _titleKey == "mnt_winsxs";
+        long freeBefore = measure ? SystemFree() : 0;
         var (ok, text) = await MaintenanceService.RunAsync(step, prog, _cts.Token, _unicode);
         bool cancelled = _cts.IsCancellationRequested;
         _cts.Dispose(); _cts = null;
@@ -229,7 +232,21 @@ public sealed class MaintenanceTaskVm : ViewModelBase
             SetConfirmEnabled(cr.ActionNeeded);
             ShowConfirm = true;
         }
+        else if (ok && measure)
+        {
+            long freed = SystemFree() - freeBefore;
+            // меньше ~50 МБ - это шум (другие программы тоже пишут на диск): честно говорим «почти ничего»
+            Status = freed >= 50L * 1024 * 1024
+                ? string.Format(Loc.I["mnt_done_freed_sz"], Format.Bytes(freed))
+                : Loc.I["mnt_done_freed_none"];
+        }
         else Status = Loc.I[ok ? _doneKey : "mnt_fail"];
+    }
+
+    private static long SystemFree()
+    {
+        try { return new System.IO.DriveInfo(System.IO.Path.GetPathRoot(Environment.SystemDirectory)!).AvailableFreeSpace; }
+        catch { return 0; }
     }
 
     private void Cancel()

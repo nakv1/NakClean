@@ -51,12 +51,19 @@ public sealed partial class MainViewModel
     public ObservableCollection<SearchOptionVm> SearchTypes { get; } = new();
     public ObservableCollection<SearchOptionVm> SearchDrives { get; } = new();
     public RelayCommand RebuildIndexCommand { get; private set; } = null!;
-    public RelayCommand SortSearchCommand { get; private set; } = null!;
 
     private void InitSearch()
     {
         RebuildIndexCommand = new RelayCommand(async () => await BuildIndexAsync(), () => !IndexBusy);
-        SortSearchCommand = new RelayCommand(p => SortSearch(p as string));
+        // размер и дата - первым кликом сначала большие и новые
+        SearchColumns = new ColumnSort((key, desc) =>
+            {
+                _searchSort = key switch { "size" => SearchSort.Size, "date" => SearchSort.Date, _ => SearchSort.Name };
+                _searchDesc = desc;
+                QueueSearch(0);
+            },
+            ("name", "fs_c_name", "", false), ("size", "fs_c_size", "", true), ("date", "fx_c_date", "", true))
+            .Initial("name", false);
         BuildSearchOptions();
         // дочиталась флешка - добавить её в список дисков и пересчитать текущий запрос
         _index.VolumesChanged += () => System.Windows.Application.Current?.Dispatcher.BeginInvoke(() =>
@@ -109,11 +116,8 @@ public sealed partial class MainViewModel
         private set { if (Set(ref _indexBusy, value)) RebuildIndexCommand.RaiseCanExecuteChanged(); }
     }
 
-    public string SearchNameHeader => SortHeader("fs_c_name", SearchSort.Name);
-    public string SearchSizeHeader => SortHeader("fs_c_size", SearchSort.Size);
-    public string SearchDateHeader => SortHeader("fx_c_date", SearchSort.Date);
-    private string SortHeader(string key, SearchSort s)
-        => Loc.I[key] + (_searchSort == s ? (_searchDesc ? "  ▼" : "  ▲") : "");
+    /// <summary>Заголовки результатов поиска (общий вид сортировки). Сортирует сам поиск - по всему индексу.</summary>
+    public ColumnSort SearchColumns { get; private set; } = null!;
 
     /// <summary>Первое открытие поиска - читаем диски; дальше просто освежаем результаты.</summary>
     public void EnsureSearchIndex()
@@ -190,25 +194,6 @@ public sealed partial class MainViewModel
         finally { _suppressSearch = false; }
     }
 
-    private void SortSearch(string? key)
-    {
-        var s = key switch { "size" => SearchSort.Size, "date" => SearchSort.Date, _ => SearchSort.Name };
-        if (s == _searchSort) _searchDesc = !_searchDesc;
-        else
-        {
-            _searchSort = s;
-            _searchDesc = s != SearchSort.Name;   // размер и дата - сначала большие и новые
-        }
-        RaiseSortHeaders();
-        QueueSearch(0);
-    }
-
-    private void RaiseSortHeaders()
-    {
-        OnPropertyChanged(nameof(SearchNameHeader));
-        OnPropertyChanged(nameof(SearchSizeHeader));
-        OnPropertyChanged(nameof(SearchDateHeader));
-    }
 
     // новый запрос отменяет предыдущий; перед поиском индекс догоняет изменения на дисках
     private async void QueueSearch(int delayMs)
@@ -267,7 +252,7 @@ public sealed partial class MainViewModel
     private void OnSearchLanguageChanged()
     {
         BuildSearchOptions();
-        RaiseSortHeaders();
+        SearchColumns.RaiseLocalized();
         SearchResults = SearchResults.Select(r => new SearchRowVm(r.Row)).ToList();   // формат даты
         SearchStatus = IndexBusy ? Loc.I["fx_reading"] : FoundText();
     }

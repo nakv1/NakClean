@@ -7,7 +7,6 @@ namespace NakClean.Services;
 public sealed class ExtStat
 {
     public required string Ext { get; init; }     // ".dll" или "(без расширения)"
-    public string TypeName { get; set; } = "";    // дружелюбное имя типа из системы
     public long Size { get; set; }
     public long Alloc { get; set; }
     public int Files { get; set; }
@@ -35,6 +34,8 @@ public sealed class ScanResult
     public long DriveFree { get; init; }
     public long DriveUsed => DriveTotal - DriveFree;
     public TimeSpan Elapsed { get; init; }
+    /// <summary>Анализировали весь диск (а не папку) - тогда «занято на томе» минус «на диске» = резерв Windows и служебное.</summary>
+    public bool WholeDrive { get; init; }
 }
 
 /// <summary>
@@ -51,6 +52,15 @@ public static class FileScanService
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
         string prefix = root.TrimEnd('\\');
+
+        // весь NTFS-диск: дерево прямо из оглавления (в разы быстрее, чем пути-строки, и с реальным местом на диске)
+        if (prefix.Length == 2 && prefix[1] == ':' && NtfsMftReader.IsNtfs(char.ToUpperInvariant(prefix[0])))
+        {
+            Dictionary<long, NtfsMftReader.Rec>? table = null;
+            try { table = NtfsMftReader.ReadTable(char.ToUpperInvariant(prefix[0]), ct); } catch (OperationCanceledException) { throw; } catch { }
+            if (table is { Count: > 0 }) return ScanTable(prefix, table, sw, ct);
+        }
+
         var rootNode = new TreeNode { Name = prefix };
 
         int cluster = ClusterSize(prefix);
@@ -112,20 +122,10 @@ public static class FileScanService
         // списки росли «с запасом» (место под миллион строк при 50 тыс. оставленных, у папок - под файлы
         // и подпапки): замер на C: - 174 МБ данных, без запаса 138 МБ. Работа дерева от этого не меняется.
         flat.TrimExcess();
-        var stack = new Stack<TreeNode>();
-        stack.Push(rootNode);
-        while (stack.Count > 0)
-        {
-            var n = stack.Pop();
-            n.Files?.TrimExcess();
-            if (n.Sub is { } sub) { sub.TrimExcess(); foreach (var c in sub.Values) stack.Push(c); }
-        }
+        TrimTree(rootNode);
 
-        // типы файлов: имена из системы + сортировка по размеру
+        // типы файлов: сортировка по размеру (название типа спрашивается у Windows лениво - в ExtRowVm)
         var exts = extMap.Values.OrderByDescending(e => e.Size).ToList();
-        foreach (var e in exts)
-            e.TypeName = FriendlyType(e.Ext);
-
         (long total, long free) = DriveSpace(prefix);
 
         return new ScanResult
@@ -140,6 +140,97 @@ public static class FileScanService
             DriveFree = free,
             Elapsed = sw.Elapsed,
         };
+    }
+
+    /// <summary>
+    /// Весь диск из оглавления: папки - узлы по номеру записи (создаются, только если в них есть файлы, как и раньше),
+    /// файлы - сразу в свою папку. Полный путь собирается лишь для 50 тыс. крупнейших файлов плоского списка.
+    /// «На диске» - реально занятое место из оглавления (сжатие, «дырявые» файлы), как у WizTree.
+    /// Жёсткие ссылки (один файл под двумя именами, напр. WinSxS и System32) считаются ОДИН раз.
+    /// </summary>
+    private static ScanResult ScanTable(string prefix, Dictionary<long, NtfsMftReader.Rec> table,
+                                        System.Diagnostics.Stopwatch sw, CancellationToken ct)
+    {
+        var rootNode = new TreeNode { Name = prefix };
+        var nodes = new Dictionary<long, TreeNode?> { [5] = rootNode };   // запись № 5 - корень тома
+
+        TreeNode? NodeOf(long idx, int depth)
+        {
+            if (nodes.TryGetValue(idx, out var n)) return n;               // null - «в работе» (защита от циклов) или битая
+            if (depth > 1024 || !table.TryGetValue(idx, out var r) || r.Name is null || !r.IsDir || !r.InUse) return null;
+            nodes[idx] = null;
+            var parent = NodeOf(r.Parent, depth + 1);
+            if (parent is null) return null;
+            parent.Sub ??= new(StringComparer.OrdinalIgnoreCase);
+            if (!parent.Sub.TryGetValue(r.Name, out n))
+            {
+                n = new TreeNode { Name = r.Name, Parent = parent };
+                parent.Sub[r.Name] = n;
+            }
+            nodes[idx] = n;
+            return n;
+        }
+
+        var extMap = new Dictionary<string, ExtStat>(StringComparer.OrdinalIgnoreCase);
+        var all = new List<(long size, long alloc, TreeNode parent, string name)>(table.Count);
+        long totalSize = 0, totalAlloc = 0;
+        int fileCount = 0, counter = 0;
+        string noExt = Loc.I["fs_noext"];
+
+        foreach (var r in table.Values)
+        {
+            if ((++counter & 0x3FFF) == 0) ct.ThrowIfCancellationRequested();
+            if (r.IsDir || !r.InUse || r.Name is null) continue;
+            var parent = NodeOf(r.Parent, 0);
+            if (parent is null) continue;
+
+            totalSize += r.Size;
+            totalAlloc += r.Alloc;
+            fileCount++;
+            parent.Files ??= new();
+            parent.Files.Add(new FileEntry(r.Name, r.Size, r.Alloc));
+            all.Add((r.Size, r.Alloc, parent, r.Name));
+
+            string ext = System.IO.Path.GetExtension(r.Name);
+            ext = string.IsNullOrEmpty(ext) ? noExt : ext.ToLowerInvariant();
+            if (!extMap.TryGetValue(ext, out var es)) extMap[ext] = es = new ExtStat { Ext = ext };
+            es.Size += r.Size;
+            es.Alloc += r.Alloc;
+            es.Files++;
+        }
+
+        DiskMapService.Aggregate(rootNode);
+
+        // плоский список: крупнейшие, полный путь - только для них
+        all.Sort((a, b) => b.size.CompareTo(a.size));
+        var flat = new List<ScanFile>(Math.Min(all.Count, MaxFlatFiles));
+        for (int i = 0; i < all.Count && i < MaxFlatFiles; i++)
+            flat.Add(new ScanFile(all[i].parent.FullPath + "\\" + all[i].name, all[i].size, all[i].alloc));
+        all.Clear();
+        TrimTree(rootNode);
+
+        var exts = extMap.Values.OrderByDescending(e => e.Size).ToList();
+        (long total, long free) = DriveSpace(prefix);
+
+        return new ScanResult
+        {
+            Root = rootNode, Extensions = exts, Files = flat,
+            TotalSize = totalSize, TotalAlloc = totalAlloc, FileCount = fileCount,
+            DriveTotal = total, DriveFree = free, Elapsed = sw.Elapsed, WholeDrive = true,
+        };
+    }
+
+    // списки росли «с запасом» - после сборки убираем (замер на C: 174 → 138 МБ), работа дерева не меняется
+    private static void TrimTree(TreeNode root)
+    {
+        var stack = new Stack<TreeNode>();
+        stack.Push(root);
+        while (stack.Count > 0)
+        {
+            var n = stack.Pop();
+            n.Files?.TrimExcess();
+            if (n.Sub is { } sub) { sub.TrimExcess(); foreach (var c in sub.Values) stack.Push(c); }
+        }
     }
 
     // ---------- системные сведения ----------
@@ -171,7 +262,8 @@ public static class FileScanService
 
     private static readonly Dictionary<string, string> _typeCache = new(StringComparer.OrdinalIgnoreCase);
 
-    private static string FriendlyType(string ext)
+    /// <summary>Название типа файла у Windows («Приложение», «Файл "MP4"»). Зовётся лениво из строки списка типов.</summary>
+    public static string FriendlyType(string ext)
     {
         if (ext == Loc.I["fs_noext"]) return Loc.I["fs_typefile"];
         if (_typeCache.TryGetValue(ext, out var cached)) return cached;
