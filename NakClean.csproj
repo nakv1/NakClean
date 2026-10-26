@@ -10,7 +10,7 @@
     <AssemblyName>NakClean</AssemblyName>
     <RootNamespace>NakClean</RootNamespace>
     <ApplicationIcon>icon.ico</ApplicationIcon>
-    <Version>1.8.0</Version>
+    <Version>1.9.0</Version>
     <Company>nak</Company>
     <Authors>nak</Authors>
     <Product>NakClean</Product>
